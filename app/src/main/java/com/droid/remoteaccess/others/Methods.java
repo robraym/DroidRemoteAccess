@@ -1,8 +1,6 @@
 package com.droid.remoteaccess.others;
 
 import android.Manifest;
-import android.accounts.Account;
-import android.accounts.AccountManager;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
@@ -14,7 +12,6 @@ import android.os.Build;
 import android.preference.PreferenceManager;
 import android.provider.Settings;
 import android.util.Log;
-import android.util.Patterns;
 
 import com.droid.remoteaccess.feature.Constantes;
 import com.google.android.gms.common.ConnectionResult;
@@ -22,7 +19,6 @@ import com.google.android.gms.common.GoogleApiAvailability;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.regex.Pattern;
 
 import androidx.core.app.ActivityCompat;
 
@@ -31,32 +27,16 @@ import androidx.core.app.ActivityCompat;
  */
 public class Methods {
 
-    public static final String[] PERMISSIONS = {Manifest.permission.READ_CONTACTS};
+    public static final String[] PERMISSIONS = {
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+    };
     public static final int PERMISSION_ALL = 2;
 
     public static final String GETIDDEVICE = "";
 
     public static String getEmail(Context context) {
-        Pattern emailPattern = Patterns.EMAIL_ADDRESS; // API level 8+
-        Account[] accounts = AccountManager.get(context).getAccounts();
-
-        String possibleEmail = "";
-        for (Account account : accounts) {
-            if (account.type.equalsIgnoreCase("com.google") && emailPattern.matcher(account.name).matches()) {
-                possibleEmail = account.name;
-                break;
-            }
-        }
-
-        if (possibleEmail.isEmpty()) {
-            for (Account account : accounts) {
-                if (emailPattern.matcher(account.name).matches()) {
-                    possibleEmail = account.name;
-                    break;
-                }
-            }
-        }
-        return possibleEmail;
+        return getNameDevice(context) + " (" + getIDDevice(context) + ")";
     }
 
     public static String getAccount(Context context) {

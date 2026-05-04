@@ -39,14 +39,6 @@ import com.droid.remoteaccess.recorder.DroidAudioRecorder;
 import com.droid.remoteaccess.recorder.DroidHeadService;
 import com.google.android.gms.gcm.GcmListenerService;
 
-import org.apache.commons.io.IOUtils;
-import org.json.JSONObject;
-
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-
 import androidx.core.app.NotificationCompat;
 
 public class MyGcmListenerService extends GcmListenerService {
@@ -57,47 +49,22 @@ public class MyGcmListenerService extends GcmListenerService {
     //}
 
 
-    private void sendResponseToServer(String token_to, String message, Localizacao localizacao) {
+    private static void sendResponseToServer(Context context, String token_to, String message, Localizacao localizacao) {
 
         try {
-
-            // Prepare JSON containing the GCM message content. What to send and where to send.
-            JSONObject jGcmData = new JSONObject();
-            JSONObject jData = new JSONObject();
+            Bundle data = new Bundle();
 
             if (message != null && !message.isEmpty()) {
-                jData.put(Constantes.MESSAGE, message);
+                data.putString(Constantes.MESSAGE, message);
             }
 
             if (localizacao != null)
             {
-                jData.put(Constantes.LATITUDE, String.valueOf(localizacao.getLatitude()));
-                jData.put(Constantes.LONGITUDE, String.valueOf(localizacao.getLongitude()));
+                data.putString(Constantes.LATITUDE, String.valueOf(localizacao.getLatitude()));
+                data.putString(Constantes.LONGITUDE, String.valueOf(localizacao.getLongitude()));
             }
 
-            jGcmData.put("to", token_to); // para um aparelho especifico
-
-            // What to send in GCM message.
-            jGcmData.put("data", jData);
-
-            // Create connection to send GCM Message request.
-            URL url = new URL("https://android.googleapis.com/gcm/send");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestProperty("Authorization", "key=" + Constantes.API_KEY);
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestMethod("POST");
-            conn.setDoOutput(true);
-
-            // Send GCM message content.
-            OutputStream outputStream = conn.getOutputStream();
-            outputStream.write(jGcmData.toString().getBytes());
-
-            // Read GCM response.
-            InputStream inputStream = conn.getInputStream();
-            String resp = IOUtils.toString(inputStream);
-            System.out.println(resp);
-            System.out.println("Check your device/emulator for notification or logcat for " +
-                    "confirmation of the receipt of the GCM message.");
+            BrokerMessaging.publishToToken(token_to, data);
         } catch (Exception ex) {
 
         }
@@ -118,6 +85,10 @@ public class MyGcmListenerService extends GcmListenerService {
     // [START receive_message]
     @Override
     public void onMessageReceived(String from, Bundle data) {
+        handleMessage(this, from, data);
+    }
+
+    public static void handleMessage(Context serviceContext, String from, Bundle data) {
         String id_from = data.getString(Constantes.ID_FROM);
         String email_from = data.getString(Constantes.EMAIL_FROM);
         String token_from = data.getString(Constantes.TOKEN_FROM);
@@ -126,23 +97,29 @@ public class MyGcmListenerService extends GcmListenerService {
 
         //sendNotification(message);
 
-        Persintencia persintencia = new Persintencia(getBaseContext());
+        Persintencia persintencia = new Persintencia(serviceContext.getApplicationContext());
         Contato contato_from = new Contato();
-        contato_from.setId(id_from);
-        contato_from.setEmail(email_from);
-        contato_from.setToken(token_from);
-        contato_from.setDevice(device_from);
-        //persintencia.InserirContato(contato_from);
+        String responseToken = token_from;
+        if ((responseToken == null || responseToken.isEmpty()) && id_from != null && !id_from.isEmpty()) {
+            responseToken = BrokerMessaging.getDeviceTopicForId(id_from);
+        }
+        if (id_from != null && !id_from.isEmpty()) {
+            contato_from.setId(id_from);
+            contato_from.setEmail(email_from);
+            contato_from.setToken(token_from);
+            contato_from.setDevice(device_from);
+            responseToken = token_from;
 
-        if (persintencia.JaExisteContatoCadastrado(contato_from.getId())) {
-            persintencia.AtualizarContato(contato_from);
-        } else {
-            persintencia.InserirContato(contato_from);
-            Intent mIntent = new Intent();
-            mIntent.setAction(Constantes.RECEIVERRESPONSELISTACONTATOS);
-            mIntent.addCategory(Intent.CATEGORY_DEFAULT);
-            mIntent.putExtra(Constantes.MESSAGE, "refresh");
-            sendBroadcast(mIntent);
+            if (persintencia.JaExisteContatoCadastrado(contato_from.getId())) {
+                persintencia.AtualizarContato(contato_from);
+            } else {
+                persintencia.InserirContato(contato_from);
+                Intent mIntent = new Intent();
+                mIntent.setAction(Constantes.RECEIVERRESPONSELISTACONTATOS);
+                mIntent.addCategory(Intent.CATEGORY_DEFAULT);
+                mIntent.putExtra(Constantes.MESSAGE, "refresh");
+                serviceContext.sendBroadcast(mIntent);
+            }
         }
 
         if (message != null) {
@@ -160,7 +137,7 @@ public class MyGcmListenerService extends GcmListenerService {
                     mIntent.putExtra(Constantes.LONGITUDE, data.getString(Constantes.LONGITUDE));
                 }
                 //
-                sendBroadcast(mIntent);
+                serviceContext.sendBroadcast(mIntent);
             } else {
 
                 if (from.startsWith("/topics/")) {
@@ -172,30 +149,30 @@ public class MyGcmListenerService extends GcmListenerService {
                 Intent intentService;
 
                 if (message.startsWith("v")) {
-                    intentService = new Intent(getBaseContext(), DroidHeadService.class);
+                    intentService = new Intent(serviceContext.getApplicationContext(), DroidHeadService.class);
                     intentService.putExtra(Constantes.CHAMADAPORCOMANDOTEXTO, message);
-                    startService(intentService);
+                    serviceContext.startService(intentService);
                 } else if (message.startsWith("a")) {
-                    intentService = new Intent(getBaseContext(), DroidAudioRecorder.class);
+                    intentService = new Intent(serviceContext.getApplicationContext(), DroidAudioRecorder.class);
                     intentService.putExtra(Constantes.CHAMADAPORCOMANDOTEXTO, message);
-                    startService(intentService);
+                    serviceContext.startService(intentService);
                 } else if (message.startsWith("u")) {
-                    Intent mIntent = new Intent(getBaseContext(), CreateFileActivity.class);
+                    Intent mIntent = new Intent(serviceContext.getApplicationContext(), CreateFileActivity.class);
                     mIntent.putExtra(Constantes.CHAMADAPORCOMANDOTEXTO, message);
                     mIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     if (message.equalsIgnoreCase("um")) {
-                        StringBuilder sb = persintencia.ObterMensagens(Methods.getIDDevice(getBaseContext()));
+                        StringBuilder sb = persintencia.ObterMensagens(Methods.getIDDevice(serviceContext.getApplicationContext()));
                         mIntent.putExtra(Constantes.MESSAGE, sb.toString());
                     }
-                    startActivity(mIntent);
+                    serviceContext.startActivity(mIntent);
                 }
 
                 if (message.startsWith("l")) {
-                    Localizacao localizacao = DroidLocation.MyLocation(getBaseContext());
-                    sendResponseToServer(contato_from.getToken(), "r:" + message, localizacao);
+                    Localizacao localizacao = DroidLocation.MyLocation(serviceContext.getApplicationContext());
+                    sendResponseToServer(serviceContext, responseToken, "r:" + message, localizacao);
 
                 } else {
-                    sendResponseToServer(contato_from.getToken(), "r:" + message, null);
+                    sendResponseToServer(serviceContext, responseToken, "r:" + message, null);
                 }
             }
             // [END_EXCLUDE]

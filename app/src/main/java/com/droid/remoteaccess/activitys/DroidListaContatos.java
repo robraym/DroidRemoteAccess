@@ -18,6 +18,8 @@ import com.droid.remoteaccess.feature.HMContato;
 import com.droid.remoteaccess.dbase.Persintencia;
 import com.droid.remoteaccess.R;
 import com.droid.remoteaccess.others.Methods;
+import com.droid.remoteaccess.services.BrokerSyncService;
+import com.droid.remoteaccess.services.RegistrationIntentService;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
@@ -42,10 +44,13 @@ public class DroidListaContatos extends AppCompatActivity {
         context = getBaseContext();
         tv_nomeAparelho = (TextView) findViewById(R.id.telalistacontatos_tv_nomeAparelho);
         lv_contatos = (ListView) findViewById(R.id.telalistacontatos__lv_contatos);
+        lv_contatos.setEmptyView(findViewById(R.id.telalistacontatos_tv_vazio));
         persintencia = new Persintencia(context);
 
         contato = persintencia.ObterContato(Methods.getIDDevice(context));
-        tv_nomeAparelho.setText(contato.getEmail());
+        tv_nomeAparelho.setText("Este aparelho: " + Methods.getNameDevice(context));
+        ContextCompat.startForegroundService(this, new Intent(this, BrokerSyncService.class));
+        startService(new Intent(this, RegistrationIntentService.class));
 
         atualizaAdapterContatos();
 
@@ -69,7 +74,7 @@ public class DroidListaContatos extends AppCompatActivity {
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 Intent mIntent = new Intent(context, DroidControleRemoto.class);
                 HMContato item = (HMContato) parent.getItemAtPosition(position);
-                mIntent.putExtra(Constantes.ID_FROM, contato.getId());
+                mIntent.putExtra(Constantes.ID_FROM, Methods.getIDDevice(context));
                 mIntent.putExtra(Constantes.ID_TO, item.get(HMContato.ID));
                 startActivity(mIntent);
             }
@@ -93,8 +98,8 @@ public class DroidListaContatos extends AppCompatActivity {
 
     private void atualizaAdapterContatos() {
 
-        String[] from = {HMContato.EMAIL, HMContato.DEVICE};
-        int[] to = {R.id.celula_tv_email, R.id.celula_tv_device};
+        String[] from = {HMContato.DEVICE, HMContato.EMAIL};
+        int[] to = {R.id.celula_tv_device, R.id.celula_tv_email};
 
         lv_contatos.setAdapter(
 
@@ -104,7 +109,7 @@ public class DroidListaContatos extends AppCompatActivity {
                 //           persintencia.listaContatos()
                 //   )
 
-                new SimpleAdapter(context, persintencia.listaContatos(), R.layout.celula, from, to)
+                new SimpleAdapter(context, persintencia.listaContatos(Methods.getIDDevice(context)), R.layout.celula, from, to)
 
         );
     }

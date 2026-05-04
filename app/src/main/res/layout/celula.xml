@@ -2,24 +2,58 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="10dp"
-    android:orientation="vertical">
+    android:background="@drawable/bg_contact_card"
+    android:gravity="center_vertical"
+    android:minHeight="72dp"
+    android:orientation="horizontal"
+    android:paddingLeft="14dp"
+    android:paddingTop="12dp"
+    android:paddingRight="14dp"
+    android:paddingBottom="12dp">
 
     <TextView
-        android:id="@+id/celula_tv_email"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Nome"
-        android:textSize="15sp" />
+        android:id="@+id/celula_tv_icon"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
+        android:background="@drawable/bg_contact_icon"
+        android:gravity="center"
+        android:text="DR"
+        android:textColor="@android:color/white"
+        android:textSize="13sp"
+        android:textStyle="bold" />
 
-    <TextView
-        android:id="@+id/celula_tv_device"
-        android:layout_width="match_parent"
+    <LinearLayout
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:paddingLeft="5dp"
-        android:paddingRight="5dp"
-        android:textSize="10dp"
-        android:text="1" />
+        android:layout_marginLeft="12dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/celula_tv_device"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:text="Samsung"
+            android:textColor="@color/textPrimaryDark"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/celula_tv_email"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:ellipsize="middle"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:text="Identificador"
+            android:textColor="@color/textSecondaryDark"
+            android:textSize="11sp" />
+
+    </LinearLayout>
 
 
 </LinearLayout>

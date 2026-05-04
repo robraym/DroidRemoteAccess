@@ -2,30 +2,74 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@drawable/bg_screen_dark"
     android:orientation="vertical"
-    android:padding="30dp">
+    android:paddingLeft="18dp"
+    android:paddingTop="24dp"
+    android:paddingRight="18dp"
+    android:paddingBottom="20dp">
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="20dp"
-        android:gravity="center"
-        android:text="Lista de Contatos"
-        android:textSize="25sp" />
+        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:text="Remote Access"
+        android:textColor="@color/textPrimaryDark"
+        android:textSize="21sp"
+        android:textStyle="bold" />
 
     <TextView
         android:id="@+id/telalistacontatos_tv_nomeAparelho"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="20dp"
-        android:gravity="right"
-        android:text="Aparelho registrado: "
-        android:textSize="10sp" />
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="22dp"
+        android:background="@drawable/bg_device_pill"
+        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:paddingLeft="14dp"
+        android:paddingTop="8dp"
+        android:paddingRight="14dp"
+        android:paddingBottom="8dp"
+        android:text="Aparelho"
+        android:textColor="@color/textSecondaryDark"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp"
+        android:includeFontPadding="false"
+        android:text="Dispositivos disponíveis"
+        android:textColor="@color/textPrimaryDark"
+        android:textSize="16sp"
+        android:textStyle="bold" />
 
 
     <ListView
         android:id="@+id/telalistacontatos__lv_contatos"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content" />
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:cacheColorHint="@android:color/transparent"
+        android:divider="@android:color/transparent"
+        android:dividerHeight="10dp"
+        android:listSelector="@android:color/transparent"
+        android:scrollbarStyle="outsideOverlay" />
+
+    <TextView
+        android:id="@+id/telalistacontatos_tv_vazio"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:background="@drawable/bg_contact_card"
+        android:gravity="center"
+        android:padding="22dp"
+        android:text="Abra o app em outro aparelho para ele aparecer aqui."
+        android:textColor="@color/textSecondaryDark"
+        android:textSize="14sp" />
 
 </LinearLayout>

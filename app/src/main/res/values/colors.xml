@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#3F51B5</color>
-    <color name="colorPrimaryDark">#303F9F</color>
-    <color name="colorAccent">#FF4081</color>
+    <color name="colorPrimary">#111820</color>
+    <color name="colorPrimaryDark">#070A0E</color>
+    <color name="colorAccent">#2F8CFF</color>
+    <color name="screenDark">#070A0E</color>
+    <color name="cardDark">#171D24</color>
+    <color name="cardStroke">#26313D</color>
+    <color name="textPrimaryDark">#F4F7FB</color>
+    <color name="textSecondaryDark">#A8B3C1</color>
+    <color name="uniwireBlue">#2F8CFF</color>
+    <color name="uniwireGreen">#31D08A</color>
 
 </resources>

@@ -1,8 +1,11 @@
 <resources>
-    <string name="app_name">Droid Remote Access</string>
+    <string name="app_name">Remote Access</string>
         <string name="gcm_send_message">Aparelho registrado com sucesso.</string>
     <string name="registering_message">Registrando, aguarde ...</string>
     <string name="token_error_message">Não foi possível registrar esse aparelho. Tente novamente mais tarde.</string>
+    <string name="permission_required_message">Permissão necessária para registrar este aparelho.</string>
+    <string name="export_error_message">Não foi possível exportar o arquivo.</string>
+    <string name="sync_service_message">Sincronização de comandos ativa.</string>
 
     <string name="txt_titulo">Settings</string>
     <string name="txt_tela_Config">SETTINGS SCREEN</string>

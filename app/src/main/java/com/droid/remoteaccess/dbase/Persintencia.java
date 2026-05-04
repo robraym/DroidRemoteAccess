@@ -141,6 +141,7 @@ public class Persintencia extends SQLiteOpenHelper {
         cv.put(ID, contato.getId());
         cv.put(EMAIL, contato.getEmail());
         cv.put(TOKEN, contato.getToken());
+        cv.put(EMAIL, contato.getEmail());
         cv.put(DEVICE, contato.getDevice());
         //
         getWritableDatabase().insert(CONTATOS, null, cv);
@@ -311,16 +312,25 @@ public class Persintencia extends SQLiteOpenHelper {
     }
 
     public ArrayList<HMContato> listaContatos() {
+        return listaContatos("");
+    }
+
+    public ArrayList<HMContato> listaContatos(String idIgnorado) {
         ArrayList<HMContato> contatos = new ArrayList<>();
         //
         Cursor cursor = null;
         //
         try {
             StringBuilder sb = new StringBuilder();
-            sb.append("SELECT " + ID + ","  + EMAIL + ","  +  DEVICE + " FROM " + CONTATOS + " ORDER BY " + EMAIL);
-            //sb.append("SELECT " + EMAIL + "," + DEVICE + " FROM " + TABELA + " WHERE " + EMAIL + " != " + "'" + email + "'" + " ORDER BY " + EMAIL);
+            sb.append("SELECT " + ID + ","  + EMAIL + ","  +  DEVICE + " FROM " + CONTATOS);
+            String[] argumentos = null;
+            if (idIgnorado != null && !idIgnorado.isEmpty()) {
+                sb.append(" WHERE " + ID + " != ?");
+                argumentos = new String[]{idIgnorado};
+            }
+            sb.append(" ORDER BY " + DEVICE + "," + EMAIL);
             //
-            cursor = getWritableDatabase().rawQuery(sb.toString(), null);
+            cursor = getWritableDatabase().rawQuery(sb.toString(), argumentos);
             //
             while (cursor.moveToNext()) {
                 HMContato item = new HMContato();

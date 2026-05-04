@@ -14,6 +14,7 @@ import com.droid.remoteaccess.feature.Constantes;
 import com.droid.remoteaccess.feature.Contato;
 import com.droid.remoteaccess.dbase.Persintencia;
 import com.droid.remoteaccess.R;
+import com.droid.remoteaccess.services.BrokerSyncService;
 import com.droid.remoteaccess.services.RegistrationIntentService;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -63,6 +64,7 @@ public class DroidControleRemoto extends AppCompatActivity {
         Contato contato = persintencia.ObterContato(idTo);
         token = contato.getToken();
         tv_controlando.setText(contato.getEmail());
+        ContextCompat.startForegroundService(this, new Intent(this, BrokerSyncService.class));
 
         btn_gravar_video = (Button) findViewById(R.id.btn_gravar_video);
         btn_gravar_video.setOnClickListener(new View.OnClickListener() {
