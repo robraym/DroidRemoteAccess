@@ -1,13 +1,15 @@
 package com.droid.remoteaccess.feature;
 
+import com.droid.remoteaccess.BuildConfig;
+
 /**
  * Created by nalmir on 19/12/2015.
  */
 public class Constantes {
 
     public static final String TAG = "DRA";
-    public static final String API_KEY = "AIzaSyDUq4PHwLRombR8xPjzsSURWZ8HfPM98j4";
-    public static final String SENDER_ID = "648009425841";
+    public static final String API_KEY = BuildConfig.GCM_API_KEY;
+    public static final String SENDER_ID = BuildConfig.GCM_SENDER_ID;
     public static final String ID_TO = "id_to";
     public static final String ID_FROM = "id_from";
     public static final String EMAIL_TO = "email_to";

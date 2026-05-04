@@ -16,14 +16,15 @@
 
 package com.droid.remoteaccess.services;
 
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.media.RingtoneManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
-import android.support.v4.app.NotificationCompat;
 
 import com.droid.remoteaccess.feature.Constantes;
 import com.droid.remoteaccess.feature.Contato;
@@ -45,6 +46,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+
+import androidx.core.app.NotificationCompat;
 
 public class MyGcmListenerService extends GcmListenerService {
 
@@ -103,6 +106,7 @@ public class MyGcmListenerService extends GcmListenerService {
 
 
     private static final String TAG = "MyGcmListenerService";
+    private static final String CHANNEL_ID = "remote_access_messages";
 
     /**
      * Called when message is received.
@@ -211,11 +215,11 @@ public class MyGcmListenerService extends GcmListenerService {
         Intent intent = new Intent(this, DroidListaContatos.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0 /* Request code */, intent,
-                PendingIntent.FLAG_ONE_SHOT);
+                PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE);
 
         Uri defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-        NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this)
-                .setSmallIcon(R.drawable.common_ic_googleplayservices)
+        NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("GCM Message")
                 .setContentText(message)
                 .setAutoCancel(true)
@@ -224,6 +228,14 @@ public class MyGcmListenerService extends GcmListenerService {
 
         NotificationManager notificationManager =
                 (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID,
+                    getString(R.string.app_name),
+                    NotificationManager.IMPORTANCE_DEFAULT);
+            notificationManager.createNotificationChannel(channel);
+        }
 
         notificationManager.notify(0 /* ID of notification */, notificationBuilder.build());
     }

@@ -21,7 +21,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
-import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
 import com.droid.remoteaccess.feature.Constantes;
@@ -40,6 +39,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 public class RegistrationIntentService extends IntentService {
 

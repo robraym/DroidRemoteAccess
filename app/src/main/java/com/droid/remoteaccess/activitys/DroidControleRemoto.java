@@ -4,13 +4,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.location.Location;
-import android.location.LocationListener;
-import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Bundle;
-import android.support.v7.app.AppCompatActivity;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -19,10 +14,10 @@ import com.droid.remoteaccess.feature.Constantes;
 import com.droid.remoteaccess.feature.Contato;
 import com.droid.remoteaccess.dbase.Persintencia;
 import com.droid.remoteaccess.R;
-import com.droid.remoteaccess.feature.Localizacao;
 import com.droid.remoteaccess.services.RegistrationIntentService;
 
-import org.w3c.dom.Text;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 
 /**
  * Created by Robson on 06/03/2016.
@@ -139,7 +134,7 @@ public class DroidControleRemoto extends AppCompatActivity {
         //
         receiver = new ReceiverResponseControleRemoto();
         //
-        registerReceiver(receiver, filter);
+        ContextCompat.registerReceiver(this, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
 
     }
 

@@ -12,7 +12,6 @@ import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.IBinder;
-import android.support.annotation.Nullable;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
@@ -23,6 +22,8 @@ import com.droid.remoteaccess.feature.Constantes;
 import com.droid.remoteaccess.others.Methods;
 
 import java.io.IOException;
+
+import androidx.annotation.Nullable;
 
 
 public class DroidAudioRecorder extends Service {

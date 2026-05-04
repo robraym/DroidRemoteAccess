@@ -12,8 +12,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.preference.PreferenceManager;
-import android.support.v4.app.ActivityCompat;
-import android.telephony.TelephonyManager;
+import android.provider.Settings;
 import android.util.Log;
 import android.util.Patterns;
 
@@ -25,12 +24,14 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.regex.Pattern;
 
+import androidx.core.app.ActivityCompat;
+
 /**
  * Created by Robson on 02/03/2016.
  */
 public class Methods {
 
-    public static final String[] PERMISSIONS = {Manifest.permission.READ_CONTACTS, Manifest.permission.READ_PHONE_STATE};
+    public static final String[] PERMISSIONS = {Manifest.permission.READ_CONTACTS};
     public static final int PERMISSION_ALL = 2;
 
     public static final String GETIDDEVICE = "";
@@ -75,27 +76,15 @@ public class Methods {
     }
 
     public static String getNameDevice(Context context) {
-        TelephonyManager tm = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            return tm.getMmsUserAgent();
-        } else return "Smartphone Padrao";
+        return Build.MANUFACTURER + " " + Build.MODEL;
     }
 
     public static String getIDDevice(Context context) {
-        TelephonyManager tm = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
-        //if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-
-        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
-            // TODO: Consider calling
-            //    ActivityCompat#requestPermissions
-            // here to request the missing permissions, and then overriding
-            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-            //                                          int[] grantResults)
-            // to handle the case where the user grants the permission. See the documentation
-            // for ActivityCompat#requestPermissions for more details.
+        String androidId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
+        if (androidId == null || androidId.isEmpty()) {
             return "0000000000";
         }
-        else return tm.getDeviceId();
+        return androidId;
     }
 
     public static void showMessage(final Activity activity, String mensagem) {

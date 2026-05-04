@@ -11,10 +11,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.preference.PreferenceManager;
-import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.ContextCompat;
-import android.support.v4.content.LocalBroadcastManager;
-import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -28,21 +24,12 @@ import com.droid.remoteaccess.R;
 import com.droid.remoteaccess.services.RegistrationIntentService;
 import com.droid.remoteaccess.others.Methods;
 
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+
 /**
  * Created by Robson on 06/03/2016.
  */
-
- /*
-    Server API Key help
-    AIzaSyDUq4PHwLRombR8xPjzsSURWZ8HfPM98j4
-
-    Sender ID help
-    648009425841
-
-    Token
-    feR3Wk8AWcQ:APA91bGCz_Cg1WlJu7iGECxXqg0SfCPRDj7BCdSOCIvrjbbsbgoyY6vW4VU5ETsm41LAIBrqKcEY9H5kPOpypSPXRc_6Xv-SIDwfH7lVJmS3ei9OjhThwIbm82ex_p-miLUroPHPeI9N
-
-     */
 
 public class DroidRegistro extends AppCompatActivity {
 

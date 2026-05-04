@@ -6,7 +6,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Bundle;
-import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ListView;
@@ -19,6 +18,9 @@ import com.droid.remoteaccess.feature.HMContato;
 import com.droid.remoteaccess.dbase.Persintencia;
 import com.droid.remoteaccess.R;
 import com.droid.remoteaccess.others.Methods;
+
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 
 /**
  * Created by Robson on 06/03/2016.
@@ -79,7 +81,7 @@ public class DroidListaContatos extends AppCompatActivity {
 
         receiver = new ReceiverResponseListaContatos();
         //
-        registerReceiver(receiver, filter);
+        ContextCompat.registerReceiver(this, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
 
     }
 
