@@ -112,7 +112,7 @@ public class BrokerSyncService extends Service {
                     if (event.message == null) {
                         continue;
                     }
-                    MyGcmListenerService.handleMessage(this, fromTopic(event.topic), event.message);
+                    BrokerMessageHandler.handleMessage(this, fromTopic(event.topic), event.message);
                 }
                 reader.close();
             } catch (Exception e) {

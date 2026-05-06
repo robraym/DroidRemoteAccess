@@ -23,6 +23,7 @@ import com.droid.remoteaccess.services.RegistrationIntentService;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 /**
  * Created by Robson on 06/03/2016.
@@ -42,6 +43,7 @@ public class DroidListaContatos extends AppCompatActivity {
         setContentView(R.layout.telalistacontatos);
 
         context = getBaseContext();
+        Methods.AskNotificationPermission(this, getApplicationContext());
         tv_nomeAparelho = (TextView) findViewById(R.id.telalistacontatos_tv_nomeAparelho);
         lv_contatos = (ListView) findViewById(R.id.telalistacontatos__lv_contatos);
         lv_contatos.setEmptyView(findViewById(R.id.telalistacontatos_tv_vazio));
@@ -86,13 +88,13 @@ public class DroidListaContatos extends AppCompatActivity {
 
         receiver = new ReceiverResponseListaContatos();
         //
-        ContextCompat.registerReceiver(this, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
+        LocalBroadcastManager.getInstance(this).registerReceiver(receiver, filter);
 
     }
 
     @Override
     protected void onDestroy() {
-        unregisterReceiver(receiver);
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver);
         super.onDestroy();
     }
 

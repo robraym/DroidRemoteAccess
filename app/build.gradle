@@ -6,33 +6,12 @@ android {
     namespace 'com.droid.remoteaccess'
     compileSdk 35
 
-    def localProps = new Properties()
-    def localPropsFile = rootProject.file("local.properties")
-    if (localPropsFile.exists()) {
-        localPropsFile.withInputStream { stream -> localProps.load(stream) }
-    }
-
-    def gcmApiKey = providers.gradleProperty("GCM_API_KEY")
-            .orElse(localProps.getProperty("GCM_API_KEY", ""))
-            .get()
-    def gcmSenderId = providers.gradleProperty("GCM_SENDER_ID")
-            .orElse(localProps.getProperty("GCM_SENDER_ID", ""))
-            .get()
-    def escapedGcmApiKey = gcmApiKey.replace("\\", "\\\\").replace("\"", "\\\"")
-    def escapedGcmSenderId = gcmSenderId.replace("\\", "\\\\").replace("\"", "\\\"")
-
     defaultConfig {
         applicationId "com.droid.remoteaccess"
         minSdk 23
         targetSdk 35
         versionCode 2
         versionName "1.0.1"
-        buildConfigField "String", "GCM_API_KEY", "\"${escapedGcmApiKey}\""
-        buildConfigField "String", "GCM_SENDER_ID", "\"${escapedGcmSenderId}\""
-    }
-
-    buildFeatures {
-        buildConfig true
     }
 
     compileOptions {
@@ -60,6 +39,5 @@ dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
-    implementation 'com.google.android.gms:play-services-gcm:17.0.0'
     implementation 'org.apache.commons:commons-io:1.3.2'
 }

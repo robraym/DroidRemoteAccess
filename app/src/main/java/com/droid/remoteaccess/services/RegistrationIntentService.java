@@ -46,7 +46,6 @@ public class RegistrationIntentService extends IntentService {
             Context context = getBaseContext();
             Persintencia persintencia = new Persintencia(getBaseContext());
             Contato contato_from = new Contato();
-            Contato contato_to = new Contato();
 
             String id_from = intent.getStringExtra(Constantes.ID_FROM);
             String id_to = intent.getStringExtra(Constantes.ID_TO);
@@ -60,7 +59,7 @@ public class RegistrationIntentService extends IntentService {
                 String email = Methods.getEmail(context);
                 String device = Methods.getNameDevice(context);
                 token = BrokerMessaging.getDeviceTopic(context);
-                Log.i(TAG, "Broker topic: " + token);
+                Log.i(TAG, "Broker topic ready");
 
                 contato_from.setId(id_from);
                 contato_from.setEmail(email);
@@ -77,16 +76,35 @@ public class RegistrationIntentService extends IntentService {
             }
             else
             {
-                contato_from = persintencia.ObterContato(id_from);
-                contato_to = persintencia.ObterContato(id_to);
+                if (id_to == null || id_to.isEmpty()) {
+                    throw new IllegalArgumentException("Destino não informado");
+                }
+
+                String senderId = id_from;
+                if (senderId == null || senderId.isEmpty()) {
+                    senderId = Methods.getIDDevice(context);
+                }
+
+                Contato contatoTo = persintencia.ObterContato(id_to);
+                String deviceTo = "";
+                if (contatoTo != null && contatoTo.getDevice() != null) {
+                    deviceTo = contatoTo.getDevice();
+                }
+
                 token = BrokerMessaging.getDeviceTopicForId(id_to);
+                String replyToken = BrokerMessaging.getDeviceTopicForId(senderId);
                 android.os.Bundle data = new android.os.Bundle();
-                data.putString(Constantes.ID_FROM, contato_from.getId());
-                data.putString(Constantes.EMAIL_FROM, contato_from.getEmail());
-                data.putString(Constantes.TOKEN_FROM, BrokerMessaging.getDeviceTopicForId(id_from));
-                data.putString(Constantes.DEVICE_FROM, contato_from.getDevice());
+                data.putString(Constantes.ID_FROM, senderId);
+                data.putString(Constantes.ID_TO, id_to);
+                data.putString(Constantes.EMAIL_FROM, Methods.getEmail(context));
+                data.putString(Constantes.TOKEN_FROM, replyToken);
+                data.putString(Constantes.REPLY_TOKEN, replyToken);
+                data.putString(Constantes.DEVICE_FROM, Methods.getNameDevice(context));
+                data.putString(Constantes.DEVICE_TO, deviceTo);
+                data.putString(Constantes.COMMAND_ID, senderId + "_" + System.currentTimeMillis());
                 data.putString(Constantes.MESSAGE, message);
-                BrokerMessaging.publishToToken(token, data);
+                BrokerMessaging.publishCommand(token, data);
+                Log.i(TAG, "Command sent: " + message);
             }
 
             sharedPreferences.edit().putBoolean(Constantes.SENT_TOKEN_TO_SERVER, true).apply();

@@ -14,11 +14,11 @@ import android.provider.Settings;
 import android.util.Log;
 
 import com.droid.remoteaccess.feature.Constantes;
-import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.GoogleApiAvailability;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 import androidx.core.app.ActivityCompat;
 
@@ -29,9 +29,12 @@ public class Methods {
 
     public static final String[] PERMISSIONS = {
             Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO
     };
     public static final int PERMISSION_ALL = 2;
+    public static final int PERMISSION_NOTIFICATIONS = 3;
 
     public static final String GETIDDEVICE = "";
 
@@ -77,23 +80,6 @@ public class Methods {
             }
         });
         alerta.show();
-    }
-
-    public static boolean checkPlayServices(Activity activity) {
-        GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
-        int resultCode = apiAvailability.isGooglePlayServicesAvailable(activity);
-        if (resultCode != ConnectionResult.SUCCESS) {
-            if (apiAvailability.isUserResolvableError(resultCode)) {
-                apiAvailability.getErrorDialog(activity, resultCode, Constantes.PLAY_SERVICES_RESOLUTION_REQUEST)
-                        .show();
-            } else {
-                Methods.showMessage(activity, "Dispositivo não suportado");
-                Log.d(Constantes.TAG, "This device is not supported.");
-                activity.finish();
-            }
-            return false;
-        }
-        return true;
     }
 
     public static int obtemQualidadeCamera(final Context context, Constantes.EnumTypeViewCam typeViewCam) {
@@ -171,14 +157,41 @@ public class Methods {
     public static boolean AskPermissionGrand(Activity activity, Context appContext) {
         boolean retorno = true;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            List<String> missingPermissions = new ArrayList<>();
             for (String permission : PERMISSIONS) {
                 if (appContext.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
-                    ActivityCompat.requestPermissions(activity, PERMISSIONS, PERMISSION_ALL);
-                    retorno = false;
+                    missingPermissions.add(permission);
                 }
+            }
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
+                    && appContext.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                missingPermissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    && appContext.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                missingPermissions.add(Manifest.permission.POST_NOTIFICATIONS);
+            }
+            if (!missingPermissions.isEmpty()) {
+                ActivityCompat.requestPermissions(activity,
+                        missingPermissions.toArray(new String[0]),
+                        PERMISSION_ALL);
+                retorno = false;
             }
         }
         return retorno;
+    }
+
+    public static boolean AskNotificationPermission(Activity activity, Context appContext) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return true;
+        }
+        if (appContext.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            return true;
+        }
+        ActivityCompat.requestPermissions(activity,
+                new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                PERMISSION_NOTIFICATIONS);
+        return false;
     }
 
 }

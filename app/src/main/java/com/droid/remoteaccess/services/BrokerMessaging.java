@@ -9,6 +9,8 @@ import com.droid.remoteaccess.others.Methods;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -51,6 +53,70 @@ public final class BrokerMessaging {
         publish(sanitizeTopic(token), toJson(data));
     }
 
+    public static void publishCommand(String token, Bundle data) throws Exception {
+        Exception firstError = null;
+        try {
+            publishToToken(token, data);
+        } catch (Exception ex) {
+            firstError = ex;
+        }
+
+        try {
+            publish(GLOBAL_TOPIC, toJson(data));
+            return;
+        } catch (Exception ex) {
+            if (firstError == null) {
+                firstError = ex;
+            }
+        }
+
+        if (firstError != null) {
+            throw firstError;
+        }
+    }
+
+    public static void publishResponse(String token, Bundle data) throws Exception {
+        publishCommand(token, data);
+    }
+
+    public static void publishAttachment(String token, File file, String fileName, String contentType, Bundle data) throws Exception {
+        if (token == null || token.isEmpty()) {
+            throw new IllegalArgumentException("Token de destino vazio");
+        }
+        if (file == null || !file.exists() || !file.isFile()) {
+            throw new IllegalArgumentException("Arquivo para envio não encontrado");
+        }
+
+        HttpURLConnection conn = (HttpURLConnection) new URL(BASE_URL + sanitizeTopic(token)).openConnection();
+        conn.setRequestMethod("PUT");
+        String safeFileName = sanitizeHeader(fileName);
+        String messagePayload = sanitizeHeader(toJson(data).toString());
+        conn.setRequestProperty("Filename", safeFileName);
+        conn.setRequestProperty("X-Filename", safeFileName);
+        conn.setRequestProperty("Content-Type", contentType);
+        conn.setRequestProperty("Message", messagePayload);
+        conn.setRequestProperty("X-Message", messagePayload);
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(60000);
+        conn.setDoOutput(true);
+
+        FileInputStream inputStream = new FileInputStream(file);
+        OutputStream outputStream = conn.getOutputStream();
+        byte[] buffer = new byte[8192];
+        int read;
+        while ((read = inputStream.read(buffer)) != -1) {
+            outputStream.write(buffer, 0, read);
+        }
+        inputStream.close();
+        outputStream.close();
+
+        int responseCode = conn.getResponseCode();
+        if (responseCode < 200 || responseCode >= 300) {
+            throw new IllegalStateException("Broker attachment HTTP " + responseCode);
+        }
+        conn.disconnect();
+    }
+
     public static PollResult poll(String topic, String since) throws Exception {
         StringBuilder urlBuilder = new StringBuilder(BASE_URL)
                 .append(sanitizeTopic(topic))
@@ -78,8 +144,10 @@ public final class BrokerMessaging {
             if (!"message".equals(event.optString("event"))) {
                 continue;
             }
-            JSONObject payload = new JSONObject(event.optString("message", "{}"));
-            messages.add(toBundle(payload));
+            Bundle message = toMessageBundle(event);
+            if (message != null) {
+                messages.add(message);
+            }
         }
         reader.close();
         conn.disconnect();
@@ -108,8 +176,7 @@ public final class BrokerMessaging {
         if (!"message".equals(event.optString("event"))) {
             return new StreamEvent(id, event.optString("topic", ""), null);
         }
-        JSONObject payload = new JSONObject(event.optString("message", "{}"));
-        return new StreamEvent(id, event.optString("topic", ""), toBundle(payload));
+        return new StreamEvent(id, event.optString("topic", ""), toMessageBundle(event));
     }
 
     private static void publish(String topic, JSONObject data) throws Exception {
@@ -134,6 +201,13 @@ public final class BrokerMessaging {
         return value.replace("ntfy:", "").replaceAll("[^A-Za-z0-9_-]", "_");
     }
 
+    private static String sanitizeHeader(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\r", " ").replace("\n", " ");
+    }
+
     private static JSONObject toJson(Bundle bundle) throws Exception {
         JSONObject json = new JSONObject();
         if (bundle == null) {
@@ -155,6 +229,34 @@ public final class BrokerMessaging {
             String key = keys.next();
             bundle.putString(key, json.optString(key, ""));
         }
+        return bundle;
+    }
+
+    private static Bundle toMessageBundle(JSONObject event) throws Exception {
+        String messageText = event.optString("message", "");
+        Bundle bundle = null;
+        if (messageText.startsWith("{")) {
+            try {
+                bundle = toBundle(new JSONObject(messageText));
+            } catch (Exception ignored) {
+                bundle = null;
+            }
+        } else if (event.has("attachment")) {
+            bundle = new Bundle();
+            bundle.putString(Constantes.MESSAGE, messageText);
+        }
+
+        JSONObject attachment = event.optJSONObject("attachment");
+        if (attachment != null) {
+            if (bundle == null) {
+                bundle = new Bundle();
+            }
+            bundle.putString(Constantes.FILE_ATTACHMENT_URL, attachment.optString("url", ""));
+            bundle.putString(Constantes.FILE_ATTACHMENT_NAME, attachment.optString("name", ""));
+            bundle.putString(Constantes.FILE_ATTACHMENT_MIME, attachment.optString("type", ""));
+            bundle.putString(Constantes.FILE_ATTACHMENT_SIZE, attachment.optString("size", ""));
+        }
+
         return bundle;
     }
 

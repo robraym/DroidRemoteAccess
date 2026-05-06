@@ -1,12 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <permission
-        android:name="com.droid.remoteaccess.permission.C2D_MESSAGE"
-        android:protectionLevel="signature" />
-
-    <uses-permission android:name="com.droid.remoteaccess.permission.C2D_MESSAGE" />
-    <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -18,8 +12,11 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.RECORD_VIDEO" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
 
     <uses-feature android:name="android.hardware.camera" />
     <uses-feature android:name="android.hardware.camera.autofocus" />
@@ -29,13 +26,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
 
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
-        <meta-data
-            android:name="com.google.android.gms.version"
-            android:value="@integer/google_play_services_version" />
         <activity
             android:name=".activitys.DroidRegistro"
             android:exported="true">
@@ -66,36 +61,20 @@
             android:exported="false"
             android:label="@string/app_name"></activity>
 
-        <!-- [START gcm_receiver] -->
-        <receiver
-            android:name="com.google.android.gms.gcm.GcmReceiver"
-            android:exported="true"
-            android:permission="com.google.android.c2dm.permission.SEND">
-            <intent-filter>
-                <action android:name="com.google.android.c2dm.intent.RECEIVE" />
-                <category android:name="com.droid.remoteaccess" />
-            </intent-filter>
-        </receiver>
-        <!-- [END gcm_receiver] -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
-        <!-- [START gcm_listener] -->
-        <service
-            android:name=".services.MyGcmListenerService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.android.c2dm.intent.RECEIVE" />
-            </intent-filter>
-        </service>
-        <!-- [END gcm_listener] -->
-        <!-- [START instanceId_listener] -->
-        <service
-            android:name=".services.MyInstanceIDListenerService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.android.gms.iid.InstanceID" />
-            </intent-filter>
-        </service>
-        <!-- [END instanceId_listener] -->
+        <receiver
+            android:name=".services.NotificationActionReceiver"
+            android:exported="false" />
+
         <service
             android:name=".services.RegistrationIntentService"
             android:exported="false"></service>
@@ -104,7 +83,14 @@
             android:exported="false"
             android:foregroundServiceType="dataSync"></service>
         <service android:name=".recorder.DroidHeadService"></service>
-        <service android:name=".recorder.DroidAudioRecorder"></service>
+        <service
+            android:name=".recorder.DroidCameraCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="camera|microphone"></service>
+        <service
+            android:name=".recorder.DroidAudioRecorder"
+            android:exported="false"
+            android:foregroundServiceType="microphone"></service>
         <service
             android:name=".notification.DroidNotification"
             android:exported="true"

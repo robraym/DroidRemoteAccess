@@ -1,0 +1,586 @@
+package com.droid.remoteaccess.services;
+
+import android.Manifest;
+import android.content.ClipData;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.util.Log;
+
+import com.droid.remoteaccess.R;
+import com.droid.remoteaccess.dbase.Persintencia;
+import com.droid.remoteaccess.feature.Constantes;
+import com.droid.remoteaccess.others.Methods;
+import com.droid.remoteaccess.recorder.DroidAudioRecorder;
+import com.droid.remoteaccess.recorder.DroidCameraCaptureService;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.net.HttpURLConnection;
+import java.net.URL;
+
+import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
+
+public final class FileTransferHelper {
+
+    private static final String TAG = "FileTransferHelper";
+    private static final String RECEIVED_FOLDER = "RemoteAccessReceived";
+    private static final String AUDIO_MIME_TYPE = "audio/3gpp";
+    private static final String VIDEO_MIME_TYPE = "video/mp4";
+    private static final String PHOTO_MIME_TYPE = "image/jpeg";
+    private static final String TEXT_MIME_TYPE = "text/plain";
+    private static final String AUDIO_CHANNEL_ID = "received_audio_files_v2";
+    private static final String VIDEO_CHANNEL_ID = "received_video_files_v1";
+    private static final String PHOTO_CHANNEL_ID = "received_photo_files_v1";
+    private static final String MESSAGES_CHANNEL_ID = "received_messages_files_v1";
+
+    private FileTransferHelper() {
+    }
+
+    public static boolean uploadLatestAudio(Context context, String tokenTo, String requesterId,
+                                            String requesterDevice, String commandId) {
+        try {
+            File audioFile = DroidAudioRecorder.getLatestAudioFile(context.getApplicationContext());
+            if (audioFile == null) {
+                Log.w(TAG, "Nenhum áudio gravado para enviar");
+                return false;
+            }
+
+            Bundle data = new Bundle();
+            data.putString(Constantes.MESSAGE, Constantes.FILE_TRANSFER_AUDIO);
+            data.putString(Constantes.FILE_TRANSFER_TYPE, "audio");
+            data.putString(Constantes.ID_FROM, Methods.getIDDevice(context.getApplicationContext()));
+            data.putString(Constantes.EMAIL_FROM, Methods.getEmail(context.getApplicationContext()));
+            data.putString(Constantes.TOKEN_FROM, BrokerMessaging.getDeviceTopic(context.getApplicationContext()));
+            data.putString(Constantes.DEVICE_FROM, Methods.getNameDevice(context.getApplicationContext()));
+            data.putString(Constantes.ID_TO, requesterId);
+            data.putString(Constantes.DEVICE_TO, requesterDevice);
+            data.putString(Constantes.COMMAND_ID, commandId);
+            data.putString(Constantes.FILE_ATTACHMENT_NAME, audioFile.getName());
+            data.putString(Constantes.FILE_ATTACHMENT_SIZE, String.valueOf(audioFile.length()));
+            data.putString(Constantes.FILE_ATTACHMENT_MIME, AUDIO_MIME_TYPE);
+
+            BrokerMessaging.publishAttachment(tokenTo, audioFile, audioFile.getName(), AUDIO_MIME_TYPE, data);
+            Log.i(TAG, "Áudio enviado: " + audioFile.getAbsolutePath());
+            return true;
+        } catch (Exception ex) {
+            Log.e(TAG, "Falha ao enviar áudio", ex);
+            return false;
+        }
+    }
+
+    public static boolean uploadMessages(Context context, String tokenTo, String requesterId,
+                                         String requesterDevice, String commandId) {
+        try {
+            File messagesFile = createMessagesExportFile(context.getApplicationContext());
+
+            Bundle data = new Bundle();
+            data.putString(Constantes.MESSAGE, Constantes.FILE_TRANSFER_MESSAGES);
+            data.putString(Constantes.FILE_TRANSFER_TYPE, "messages");
+            data.putString(Constantes.ID_FROM, Methods.getIDDevice(context.getApplicationContext()));
+            data.putString(Constantes.EMAIL_FROM, Methods.getEmail(context.getApplicationContext()));
+            data.putString(Constantes.TOKEN_FROM, BrokerMessaging.getDeviceTopic(context.getApplicationContext()));
+            data.putString(Constantes.DEVICE_FROM, Methods.getNameDevice(context.getApplicationContext()));
+            data.putString(Constantes.ID_TO, requesterId);
+            data.putString(Constantes.DEVICE_TO, requesterDevice);
+            data.putString(Constantes.COMMAND_ID, commandId);
+            data.putString(Constantes.FILE_ATTACHMENT_NAME, messagesFile.getName());
+            data.putString(Constantes.FILE_ATTACHMENT_SIZE, String.valueOf(messagesFile.length()));
+            data.putString(Constantes.FILE_ATTACHMENT_MIME, TEXT_MIME_TYPE);
+
+            BrokerMessaging.publishAttachment(tokenTo, messagesFile, messagesFile.getName(), TEXT_MIME_TYPE, data);
+            Log.i(TAG, "Mensagens enviadas: " + messagesFile.getAbsolutePath());
+            return true;
+        } catch (Exception ex) {
+            Log.e(TAG, "Falha ao enviar mensagens", ex);
+            return false;
+        }
+    }
+
+    public static boolean uploadLatestVideo(Context context, String tokenTo, String requesterId,
+                                            String requesterDevice, String commandId) {
+        File videoFile = DroidCameraCaptureService.getLatestVideoFile(context.getApplicationContext());
+        return uploadFile(context, tokenTo, requesterId, requesterDevice, commandId, videoFile,
+                Constantes.FILE_TRANSFER_VIDEO, "video", VIDEO_MIME_TYPE, "Vídeo");
+    }
+
+    public static boolean uploadLatestPhoto(Context context, String tokenTo, String requesterId,
+                                            String requesterDevice, String commandId) {
+        File photoFile = DroidCameraCaptureService.getLatestPhotoFile(context.getApplicationContext());
+        return uploadFile(context, tokenTo, requesterId, requesterDevice, commandId, photoFile,
+                Constantes.FILE_TRANSFER_PHOTO, "photo", PHOTO_MIME_TYPE, "Foto");
+    }
+
+    private static boolean uploadFile(Context context, String tokenTo, String requesterId, String requesterDevice,
+                                      String commandId, File file, String transferMessage, String transferType,
+                                      String mimeType, String label) {
+        try {
+            if (file == null) {
+                Log.w(TAG, "Nenhum arquivo encontrado para enviar: " + label);
+                return false;
+            }
+
+            Bundle data = new Bundle();
+            data.putString(Constantes.MESSAGE, transferMessage);
+            data.putString(Constantes.FILE_TRANSFER_TYPE, transferType);
+            data.putString(Constantes.ID_FROM, Methods.getIDDevice(context.getApplicationContext()));
+            data.putString(Constantes.EMAIL_FROM, Methods.getEmail(context.getApplicationContext()));
+            data.putString(Constantes.TOKEN_FROM, BrokerMessaging.getDeviceTopic(context.getApplicationContext()));
+            data.putString(Constantes.DEVICE_FROM, Methods.getNameDevice(context.getApplicationContext()));
+            data.putString(Constantes.ID_TO, requesterId);
+            data.putString(Constantes.DEVICE_TO, requesterDevice);
+            data.putString(Constantes.COMMAND_ID, commandId);
+            data.putString(Constantes.FILE_ATTACHMENT_NAME, file.getName());
+            data.putString(Constantes.FILE_ATTACHMENT_SIZE, String.valueOf(file.length()));
+            data.putString(Constantes.FILE_ATTACHMENT_MIME, mimeType);
+
+            BrokerMessaging.publishAttachment(tokenTo, file, file.getName(), mimeType, data);
+            Log.i(TAG, label + " enviado: " + file.getAbsolutePath());
+            return true;
+        } catch (Exception ex) {
+            Log.e(TAG, "Falha ao enviar arquivo: " + label, ex);
+            return false;
+        }
+    }
+
+    public static File downloadAttachment(Context context, Bundle data) throws Exception {
+        String url = data.getString(Constantes.FILE_ATTACHMENT_URL);
+        if (url == null || url.isEmpty()) {
+            throw new IllegalArgumentException("URL do anexo vazia");
+        }
+
+        String fileName = safeFileName(data.getString(Constantes.FILE_ATTACHMENT_NAME));
+        if (fileName.isEmpty()) {
+            if ("messages".equalsIgnoreCase(data.getString(Constantes.FILE_TRANSFER_TYPE))) {
+                fileName = "mensagens_" + Methods.getDateTimeFormated() + ".txt";
+            } else if ("video".equalsIgnoreCase(data.getString(Constantes.FILE_TRANSFER_TYPE))) {
+                fileName = "video_" + Methods.getDateTimeFormated() + ".mp4";
+            } else if ("photo".equalsIgnoreCase(data.getString(Constantes.FILE_TRANSFER_TYPE))) {
+                fileName = "foto_" + Methods.getDateTimeFormated() + ".jpg";
+            } else {
+                fileName = "audio_" + Methods.getDateTimeFormated() + ".3gp";
+            }
+        }
+
+        String deviceFolder = safeFileName(data.getString(Constantes.DEVICE_FROM));
+        if (deviceFolder.isEmpty()) {
+            deviceFolder = "aparelho";
+        }
+
+        File baseDir = context.getExternalFilesDir(null);
+        if (baseDir == null) {
+            baseDir = context.getFilesDir();
+        }
+        File outputDir = new File(new File(baseDir, RECEIVED_FOLDER), deviceFolder);
+        if (!outputDir.exists() && !outputDir.mkdirs()) {
+            throw new IllegalStateException("Não foi possível criar a pasta de recebidos");
+        }
+
+        File outputFile = uniqueFile(new File(outputDir, fileName));
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        conn.setRequestMethod("GET");
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(60000);
+
+        InputStream inputStream = conn.getInputStream();
+        FileOutputStream outputStream = new FileOutputStream(outputFile);
+        byte[] buffer = new byte[8192];
+        int read;
+        while ((read = inputStream.read(buffer)) != -1) {
+            outputStream.write(buffer, 0, read);
+        }
+        inputStream.close();
+        outputStream.close();
+        conn.disconnect();
+
+        Log.i(TAG, "Anexo baixado: " + outputFile.getAbsolutePath());
+        return outputFile;
+    }
+
+    public static boolean showAudioReceivedNotification(Context context, File audioFile) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "Não foi possível exibir a notificação porque POST_NOTIFICATIONS não foi concedida");
+                return false;
+            }
+
+            NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager == null) {
+                return false;
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel channel = new NotificationChannel(
+                        AUDIO_CHANNEL_ID,
+                        context.getString(R.string.remote_audio_notification_title),
+                        NotificationManager.IMPORTANCE_DEFAULT);
+                manager.createNotificationChannel(channel);
+            }
+
+            Uri audioUri = FileProvider.getUriForFile(
+                    context,
+                    context.getPackageName() + ".fileprovider",
+                    audioFile);
+
+            Intent chooserIntent = createAudioChooserIntent(context, audioUri);
+
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                flags |= PendingIntent.FLAG_IMMUTABLE;
+            }
+
+            int notificationId = Math.abs(audioFile.getAbsolutePath().hashCode());
+            PendingIntent pendingIntent = PendingIntent.getActivity(
+                    context,
+                    notificationId,
+                    chooserIntent,
+                    flags);
+
+            Intent dismissIntent = new Intent(context, NotificationActionReceiver.class);
+            dismissIntent.setAction(NotificationActionReceiver.ACTION_DISMISS_AUDIO_NOTIFICATION);
+            dismissIntent.putExtra(Constantes.NOTIFICATION_ID, notificationId);
+            PendingIntent dismissPendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    notificationId,
+                    dismissIntent,
+                    flags);
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, AUDIO_CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_stat_remote_access)
+                    .setContentTitle(context.getString(R.string.remote_audio_notification_title))
+                    .setContentText(context.getString(R.string.remote_audio_notification_text))
+                    .setStyle(new NotificationCompat.BigTextStyle()
+                            .bigText(context.getString(R.string.remote_audio_notification_text) + "\n" + audioFile.getName()))
+                    .setContentIntent(pendingIntent)
+                    .addAction(R.drawable.ic_notification_close, context.getString(R.string.remote_audio_notification_dismiss), dismissPendingIntent)
+                    .setAutoCancel(false)
+                    .setOngoing(true)
+                    .setOnlyAlertOnce(true)
+                    .setCategory(NotificationCompat.CATEGORY_STATUS)
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setVisibility(NotificationCompat.VISIBILITY_PRIVATE);
+
+            manager.notify(notificationId, builder.build());
+            return true;
+        } catch (Exception ex) {
+            Log.e(TAG, "Falha ao exibir notificação de áudio recebido", ex);
+            return false;
+        }
+    }
+
+    public static boolean showMessagesReceivedNotification(Context context, File messagesFile) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "Não foi possível exibir a notificação porque POST_NOTIFICATIONS não foi concedida");
+                return false;
+            }
+
+            NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager == null) {
+                return false;
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel channel = new NotificationChannel(
+                        MESSAGES_CHANNEL_ID,
+                        context.getString(R.string.remote_messages_notification_title),
+                        NotificationManager.IMPORTANCE_DEFAULT);
+                manager.createNotificationChannel(channel);
+            }
+
+            Uri messagesUri = FileProvider.getUriForFile(
+                    context,
+                    context.getPackageName() + ".fileprovider",
+                    messagesFile);
+
+            Intent chooserIntent = createTextChooserIntent(context, messagesUri);
+
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                flags |= PendingIntent.FLAG_IMMUTABLE;
+            }
+
+            int notificationId = Math.abs(messagesFile.getAbsolutePath().hashCode());
+            PendingIntent pendingIntent = PendingIntent.getActivity(
+                    context,
+                    notificationId,
+                    chooserIntent,
+                    flags);
+
+            Intent dismissIntent = new Intent(context, NotificationActionReceiver.class);
+            dismissIntent.setAction(NotificationActionReceiver.ACTION_DISMISS_FILE_NOTIFICATION);
+            dismissIntent.putExtra(Constantes.NOTIFICATION_ID, notificationId);
+            PendingIntent dismissPendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    notificationId,
+                    dismissIntent,
+                    flags);
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, MESSAGES_CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_stat_remote_access)
+                    .setContentTitle(context.getString(R.string.remote_messages_notification_title))
+                    .setContentText(context.getString(R.string.remote_messages_notification_text))
+                    .setStyle(new NotificationCompat.BigTextStyle()
+                            .bigText(context.getString(R.string.remote_messages_notification_text) + "\n" + messagesFile.getName()))
+                    .setContentIntent(pendingIntent)
+                    .addAction(R.drawable.ic_notification_close, context.getString(R.string.remote_audio_notification_dismiss), dismissPendingIntent)
+                    .setAutoCancel(false)
+                    .setOngoing(true)
+                    .setOnlyAlertOnce(true)
+                    .setCategory(NotificationCompat.CATEGORY_STATUS)
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setVisibility(NotificationCompat.VISIBILITY_PRIVATE);
+
+            manager.notify(notificationId, builder.build());
+            return true;
+        } catch (Exception ex) {
+            Log.e(TAG, "Falha ao exibir notificação de mensagens recebidas", ex);
+            return false;
+        }
+    }
+
+    public static boolean showVideoReceivedNotification(Context context, File videoFile) {
+        return showReceivedFileNotification(context, videoFile, VIDEO_CHANNEL_ID,
+                R.string.remote_video_notification_title,
+                R.string.remote_video_notification_text,
+                createVideoChooserIntent(context, getUriForFile(context, videoFile)));
+    }
+
+    public static boolean showPhotoReceivedNotification(Context context, File photoFile) {
+        return showReceivedFileNotification(context, photoFile, PHOTO_CHANNEL_ID,
+                R.string.remote_photo_notification_title,
+                R.string.remote_photo_notification_text,
+                createPhotoChooserIntent(context, getUriForFile(context, photoFile)));
+    }
+
+    private static boolean showReceivedFileNotification(Context context, File file, String channelId,
+                                                        int titleRes, int textRes, Intent chooserIntent) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "Não foi possível exibir a notificação porque POST_NOTIFICATIONS não foi concedida");
+                return false;
+            }
+
+            NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager == null) {
+                return false;
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel channel = new NotificationChannel(
+                        channelId,
+                        context.getString(titleRes),
+                        NotificationManager.IMPORTANCE_DEFAULT);
+                manager.createNotificationChannel(channel);
+            }
+
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                flags |= PendingIntent.FLAG_IMMUTABLE;
+            }
+
+            int notificationId = Math.abs(file.getAbsolutePath().hashCode());
+            PendingIntent pendingIntent = PendingIntent.getActivity(
+                    context,
+                    notificationId,
+                    chooserIntent,
+                    flags);
+
+            Intent dismissIntent = new Intent(context, NotificationActionReceiver.class);
+            dismissIntent.setAction(NotificationActionReceiver.ACTION_DISMISS_FILE_NOTIFICATION);
+            dismissIntent.putExtra(Constantes.NOTIFICATION_ID, notificationId);
+            PendingIntent dismissPendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    notificationId,
+                    dismissIntent,
+                    flags);
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channelId)
+                    .setSmallIcon(R.drawable.ic_stat_remote_access)
+                    .setContentTitle(context.getString(titleRes))
+                    .setContentText(context.getString(textRes))
+                    .setStyle(new NotificationCompat.BigTextStyle()
+                            .bigText(context.getString(textRes) + "\n" + file.getName()))
+                    .setContentIntent(pendingIntent)
+                    .addAction(R.drawable.ic_notification_close, context.getString(R.string.remote_audio_notification_dismiss), dismissPendingIntent)
+                    .setAutoCancel(false)
+                    .setOngoing(true)
+                    .setOnlyAlertOnce(true)
+                    .setCategory(NotificationCompat.CATEGORY_STATUS)
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setVisibility(NotificationCompat.VISIBILITY_PRIVATE);
+
+            manager.notify(notificationId, builder.build());
+            return true;
+        } catch (Exception ex) {
+            Log.e(TAG, "Falha ao exibir notificação de arquivo recebido", ex);
+            return false;
+        }
+    }
+
+    public static void openAudioFile(Context context, File audioFile) {
+        try {
+            Uri audioUri = FileProvider.getUriForFile(
+                    context,
+                    context.getPackageName() + ".fileprovider",
+                    audioFile);
+            context.startActivity(createAudioChooserIntent(context, audioUri));
+        } catch (Exception ex) {
+            Log.e(TAG, "Falha ao abrir áudio recebido", ex);
+        }
+    }
+
+    public static void openTextFile(Context context, File textFile) {
+        try {
+            Uri textUri = FileProvider.getUriForFile(
+                    context,
+                    context.getPackageName() + ".fileprovider",
+                    textFile);
+            context.startActivity(createTextChooserIntent(context, textUri));
+        } catch (Exception ex) {
+            Log.e(TAG, "Falha ao abrir mensagens recebidas", ex);
+        }
+    }
+
+    public static void openVideoFile(Context context, File videoFile) {
+        try {
+            context.startActivity(createVideoChooserIntent(context, getUriForFile(context, videoFile)));
+        } catch (Exception ex) {
+            Log.e(TAG, "Falha ao abrir vídeo recebido", ex);
+        }
+    }
+
+    public static void openPhotoFile(Context context, File photoFile) {
+        try {
+            context.startActivity(createPhotoChooserIntent(context, getUriForFile(context, photoFile)));
+        } catch (Exception ex) {
+            Log.e(TAG, "Falha ao abrir foto recebida", ex);
+        }
+    }
+
+    private static Intent createAudioChooserIntent(Context context, Uri audioUri) {
+        Intent openIntent = new Intent(Intent.ACTION_VIEW);
+        openIntent.setDataAndType(audioUri, AUDIO_MIME_TYPE);
+        openIntent.setClipData(ClipData.newRawUri("audio", audioUri));
+        openIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+        Intent chooserIntent = Intent.createChooser(openIntent, context.getString(R.string.remote_audio_open_chooser));
+        chooserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        chooserIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        return chooserIntent;
+    }
+
+    private static Intent createTextChooserIntent(Context context, Uri textUri) {
+        Intent openIntent = new Intent(Intent.ACTION_VIEW);
+        openIntent.setDataAndType(textUri, TEXT_MIME_TYPE);
+        openIntent.setClipData(ClipData.newRawUri("messages", textUri));
+        openIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+        Intent chooserIntent = Intent.createChooser(openIntent, context.getString(R.string.remote_messages_open_chooser));
+        chooserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        chooserIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        return chooserIntent;
+    }
+
+    private static Intent createVideoChooserIntent(Context context, Uri videoUri) {
+        Intent openIntent = new Intent(Intent.ACTION_VIEW);
+        openIntent.setDataAndType(videoUri, VIDEO_MIME_TYPE);
+        openIntent.setClipData(ClipData.newRawUri("video", videoUri));
+        openIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+        Intent chooserIntent = Intent.createChooser(openIntent, context.getString(R.string.remote_video_open_chooser));
+        chooserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        chooserIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        return chooserIntent;
+    }
+
+    private static Intent createPhotoChooserIntent(Context context, Uri photoUri) {
+        Intent openIntent = new Intent(Intent.ACTION_VIEW);
+        openIntent.setDataAndType(photoUri, PHOTO_MIME_TYPE);
+        openIntent.setClipData(ClipData.newRawUri("photo", photoUri));
+        openIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+        Intent chooserIntent = Intent.createChooser(openIntent, context.getString(R.string.remote_photo_open_chooser));
+        chooserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        chooserIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        return chooserIntent;
+    }
+
+    private static Uri getUriForFile(Context context, File file) {
+        return FileProvider.getUriForFile(
+                context,
+                context.getPackageName() + ".fileprovider",
+                file);
+    }
+
+    private static File createMessagesExportFile(Context context) throws Exception {
+        File baseDir = context.getExternalFilesDir(null);
+        if (baseDir == null) {
+            baseDir = context.getFilesDir();
+        }
+        File outputDir = new File(baseDir, "exports");
+        if (!outputDir.exists() && !outputDir.mkdirs()) {
+            throw new IllegalStateException("Não foi possível criar a pasta de exportação.");
+        }
+
+        Persintencia persintencia = new Persintencia(context);
+        String messages = persintencia.ObterMensagens(Methods.getIDDevice(context)).toString();
+        if (messages.trim().isEmpty()) {
+            messages = context.getString(R.string.remote_messages_empty_export) + "\n";
+        }
+
+        File outputFile = uniqueFile(new File(outputDir, "mensagens_" + Methods.getDateTimeFormated() + ".txt"));
+        Writer writer = new OutputStreamWriter(new FileOutputStream(outputFile), "UTF-8");
+        writer.write(messages);
+        writer.close();
+        return outputFile;
+    }
+
+    private static File uniqueFile(File file) {
+        if (!file.exists()) {
+            return file;
+        }
+
+        String name = file.getName();
+        String baseName = name;
+        String extension = "";
+        int dotIndex = name.lastIndexOf('.');
+        if (dotIndex > 0) {
+            baseName = name.substring(0, dotIndex);
+            extension = name.substring(dotIndex);
+        }
+
+        int index = 1;
+        File candidate;
+        do {
+            candidate = new File(file.getParentFile(), baseName + "_" + index + extension);
+            index++;
+        } while (candidate.exists());
+        return candidate;
+    }
+
+    private static String safeFileName(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replaceAll("[^A-Za-z0-9._ -]", "_").trim();
+    }
+}

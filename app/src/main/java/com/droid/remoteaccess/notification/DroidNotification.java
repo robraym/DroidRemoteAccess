@@ -22,10 +22,14 @@ public class DroidNotification extends DroidBaseNotification {
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
+        if (sbn == null || getPackageName().equals(sbn.getPackageName())) {
+            return;
+        }
+
         String msgNotification = getNotificationKitKat(sbn);
         Context context = getBaseContext();
 
-        if (!msgNotification.isEmpty()) {
+        if (msgNotification != null && !msgNotification.isEmpty()) {
             Persintencia persintencia = new Persintencia(context);
             persintencia.InserirMensagens(Methods.getIDDevice(context), Methods.getEmail(context), msgNotification);
         }
@@ -47,22 +51,26 @@ public class DroidNotification extends DroidBaseNotification {
 
     @TargetApi(Build.VERSION_CODES.KITKAT)
     private String getNotificationKitKat(StatusBarNotification mStatusBarNotification) {
-        String pack = mStatusBarNotification.getPackageName();// Package Name
-        Bundle extras = mStatusBarNotification.getNotification().extras;
-        CharSequence tit = extras.getCharSequence(Notification.EXTRA_TITLE); // Title
+        Notification notification = mStatusBarNotification.getNotification();
+        if (notification == null || notification.extras == null) {
+            return "";
+        }
+
+        Bundle extras = notification.extras;
         CharSequence desc = extras.getCharSequence(Notification.EXTRA_TEXT); // / Description
         String msg = "";
 
         try {
-            Bundle bigExtras = mStatusBarNotification.getNotification().extras;
-            CharSequence[] descArray = bigExtras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
-            msg = descArray[descArray.length - 1].toString();
+            CharSequence[] descArray = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
+            if (descArray != null && descArray.length > 0 && descArray[descArray.length - 1] != null) {
+                msg = descArray[descArray.length - 1].toString();
+            }
 
         } catch (Exception ex) {
 
         }
 
-        if (msg.isEmpty()) {
+        if (msg.isEmpty() && desc != null) {
             msg = desc.toString();
         }
 

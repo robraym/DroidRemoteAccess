@@ -67,7 +67,7 @@ public class DroidRegistro extends AppCompatActivity {
                         .getBoolean(Constantes.SENT_TOKEN_TO_SERVER, false);
                 if (sentToken) {
                     ChamaListaContatos();
-                    Toast.makeText(context, getString(R.string.gcm_send_message), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(context, getString(R.string.registration_success_message), Toast.LENGTH_SHORT).show();
                     Intent mIntent = new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS");
                     mIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(mIntent);
@@ -166,12 +166,8 @@ public class DroidRegistro extends AppCompatActivity {
         }
 
         if (!contatoCadastrado) {
-            if (Methods.checkPlayServices(DroidRegistro.this)) {
-                Intent intent = new Intent(DroidRegistro.this, RegistrationIntentService.class);
-                startService(intent);
-
-
-            }
+            Intent intent = new Intent(DroidRegistro.this, RegistrationIntentService.class);
+            startService(intent);
         }
         return contatoCadastrado;
 

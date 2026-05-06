@@ -228,10 +228,20 @@ public class Persintencia extends SQLiteOpenHelper {
         String[] argumentos = new String[]{contato.getId()};
         String FILTRO = ID + " = ?";
         //
+        cv.put(EMAIL, contato.getEmail());
         cv.put(TOKEN, contato.getToken());
         cv.put(DEVICE, contato.getDevice());
         //
         getWritableDatabase().update(CONTATOS, cv, FILTRO, argumentos);
+    }
+
+    public void ApagarContatosMesmoDispositivo(String device, String idAtual) {
+        if (device == null || device.isEmpty() || idAtual == null || idAtual.isEmpty()) {
+            return;
+        }
+        String[] argumentos = new String[]{device, idAtual};
+        String FILTRO = DEVICE + " = ? AND " + ID + " != ?";
+        getWritableDatabase().delete(CONTATOS, FILTRO, argumentos);
     }
 
     public void ApagarContato(String id) {
