@@ -6,6 +6,7 @@
     <string name="permission_required_message">Permissões necessárias para registrar e controlar este aparelho.</string>
     <string name="export_error_message">Não foi possível exportar o arquivo.</string>
     <string name="sync_service_message">Sincronização de comandos ativa.</string>
+    <string name="contacts_current_device">Este aparelho: %1$s</string>
     <string name="remote_title">Controle remoto</string>
     <string name="remote_subtitle">Comandos para o aparelho selecionado</string>
     <string name="remote_controlling">Controlando</string>

@@ -1,6 +1,8 @@
 package com.droid.remoteaccess.others;
 
 import android.Manifest;
+import android.accounts.Account;
+import android.accounts.AccountManager;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
@@ -12,6 +14,7 @@ import android.os.Build;
 import android.preference.PreferenceManager;
 import android.provider.Settings;
 import android.util.Log;
+import android.util.Patterns;
 
 import com.droid.remoteaccess.feature.Constantes;
 
@@ -19,6 +22,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 import androidx.core.app.ActivityCompat;
 
@@ -31,7 +35,8 @@ public class Methods {
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.GET_ACCOUNTS
     };
     public static final int PERMISSION_ALL = 2;
     public static final int PERMISSION_NOTIFICATIONS = 3;
@@ -39,7 +44,11 @@ public class Methods {
     public static final String GETIDDEVICE = "";
 
     public static String getEmail(Context context) {
-        return getNameDevice(context) + " (" + getIDDevice(context) + ")";
+        String accountEmail = getPrimaryAccountEmail(context);
+        if (accountEmail != null && !accountEmail.isEmpty()) {
+            return accountEmail;
+        }
+        return "";
     }
 
     public static String getAccount(Context context) {
@@ -59,7 +68,112 @@ public class Methods {
     }
 
     public static String getNameDevice(Context context) {
-        return Build.MANUFACTURER + " " + Build.MODEL;
+        String manufacturer = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER;
+        String model = Build.MODEL == null ? "" : Build.MODEL;
+        return formatDeviceName(manufacturer + " " + model);
+    }
+
+    public static String formatDeviceName(String deviceName) {
+        if (deviceName == null) {
+            return "Aparelho Android";
+        }
+
+        String cleaned = deviceName.trim().replaceAll("\\s+", " ");
+        if (cleaned.isEmpty()) {
+            return "Aparelho Android";
+        }
+
+        String samsungName = formatSamsungDeviceName(cleaned);
+        if (!samsungName.isEmpty()) {
+            return samsungName;
+        }
+        return cleaned;
+    }
+
+    public static String formatEmailForDisplay(String email) {
+        if (email != null && Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()) {
+            return email.trim();
+        }
+        return "";
+    }
+
+    private static String getPrimaryAccountEmail(Context context) {
+        try {
+            if (context == null) {
+                return "";
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                    && context.checkSelfPermission(Manifest.permission.GET_ACCOUNTS) != PackageManager.PERMISSION_GRANTED) {
+                return "";
+            }
+
+            AccountManager accountManager = AccountManager.get(context.getApplicationContext());
+            Account[] googleAccounts = accountManager.getAccountsByType("com.google");
+            String googleEmail = firstEmailAccount(googleAccounts);
+            if (!googleEmail.isEmpty()) {
+                return googleEmail;
+            }
+            return firstEmailAccount(accountManager.getAccounts());
+        } catch (Exception ex) {
+            Log.d("RemoteAccess", "Não foi possível obter a conta principal", ex);
+            return "";
+        }
+    }
+
+    private static String firstEmailAccount(Account[] accounts) {
+        if (accounts == null) {
+            return "";
+        }
+        for (Account account : accounts) {
+            if (account != null && account.name != null
+                    && Patterns.EMAIL_ADDRESS.matcher(account.name.trim()).matches()) {
+                return account.name.trim();
+            }
+        }
+        return "";
+    }
+
+    private static String formatSamsungDeviceName(String deviceName) {
+        String upper = deviceName.toUpperCase(Locale.US);
+        if (!upper.contains("SAMSUNG") && !upper.contains("SM-")) {
+            return "";
+        }
+        String normalized = upper.replaceAll("[^A-Z0-9]", "");
+
+        if (normalized.contains("SMG930")) return "Galaxy S7";
+        if (normalized.contains("SMG935")) return "Galaxy S7 Edge";
+        if (normalized.contains("SMG950")) return "Galaxy S8";
+        if (normalized.contains("SMG955")) return "Galaxy S8+";
+        if (normalized.contains("SMG960")) return "Galaxy S9";
+        if (normalized.contains("SMG965")) return "Galaxy S9+";
+        if (normalized.contains("SMG970")) return "Galaxy S10e";
+        if (normalized.contains("SMG973")) return "Galaxy S10";
+        if (normalized.contains("SMG975")) return "Galaxy S10+";
+        if (normalized.contains("SMG980") || normalized.contains("SMG981")) return "Galaxy S20";
+        if (normalized.contains("SMG985") || normalized.contains("SMG986")) return "Galaxy S20+";
+        if (normalized.contains("SMG988")) return "Galaxy S20 Ultra";
+        if (normalized.contains("SMG991")) return "Galaxy S21";
+        if (normalized.contains("SMG996")) return "Galaxy S21+";
+        if (normalized.contains("SMG998")) return "Galaxy S21 Ultra";
+        if (normalized.contains("SMS901")) return "Galaxy S22";
+        if (normalized.contains("SMS906")) return "Galaxy S22+";
+        if (normalized.contains("SMS908")) return "Galaxy S22 Ultra";
+        if (normalized.contains("SMS911")) return "Galaxy S23";
+        if (normalized.contains("SMS916")) return "Galaxy S23+";
+        if (normalized.contains("SMS918")) return "Galaxy S23 Ultra";
+        if (normalized.contains("SMS921")) return "Galaxy S24";
+        if (normalized.contains("SMS926")) return "Galaxy S24+";
+        if (normalized.contains("SMS928")) return "Galaxy S24 Ultra";
+        if (normalized.contains("SMF900")) return "Galaxy Fold";
+        if (normalized.contains("SMF907")) return "Galaxy Fold 5G";
+        if (normalized.contains("SMF916")) return "Galaxy Z Fold2";
+        if (normalized.contains("SMF926")) return "Galaxy Z Fold3";
+        if (normalized.contains("SMF936")) return "Galaxy Z Fold4";
+        if (normalized.contains("SMF946")) return "Galaxy Z Fold5";
+        if (normalized.contains("SMF956")) return "Galaxy Z Fold6";
+        if (upper.contains("FOLD")) return "Galaxy Z Fold";
+
+        return deviceName.replaceFirst("(?i)^samsung\\s+", "Samsung ");
     }
 
     public static String getIDDevice(Context context) {

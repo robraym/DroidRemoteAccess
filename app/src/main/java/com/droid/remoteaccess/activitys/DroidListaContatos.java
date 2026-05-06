@@ -50,7 +50,7 @@ public class DroidListaContatos extends AppCompatActivity {
         persintencia = new Persintencia(context);
 
         contato = persintencia.ObterContato(Methods.getIDDevice(context));
-        tv_nomeAparelho.setText("Este aparelho: " + Methods.getNameDevice(context));
+        tv_nomeAparelho.setText(getString(R.string.contacts_current_device, Methods.getNameDevice(context)));
         ContextCompat.startForegroundService(this, new Intent(this, BrokerSyncService.class));
         startService(new Intent(this, RegistrationIntentService.class));
 
@@ -103,17 +103,25 @@ public class DroidListaContatos extends AppCompatActivity {
         String[] from = {HMContato.DEVICE, HMContato.EMAIL};
         int[] to = {R.id.celula_tv_device, R.id.celula_tv_email};
 
-        lv_contatos.setAdapter(
-
-                //   new ArrayAdapter<HMContato>(
-                //           context,
-                //           R.layout.celula,
-                //           persintencia.listaContatos()
-                //   )
-
-                new SimpleAdapter(context, persintencia.listaContatos(Methods.getIDDevice(context)), R.layout.celula, from, to)
-
-        );
+        SimpleAdapter adapter = new SimpleAdapter(context,
+                persintencia.listaContatos(Methods.getIDDevice(context)),
+                R.layout.celula,
+                from,
+                to);
+        adapter.setViewBinder(new SimpleAdapter.ViewBinder() {
+            @Override
+            public boolean setViewValue(View view, Object data, String textRepresentation) {
+                if (view.getId() == R.id.celula_tv_email && view instanceof TextView) {
+                    TextView emailView = (TextView) view;
+                    String email = textRepresentation == null ? "" : textRepresentation.trim();
+                    emailView.setVisibility(email.isEmpty() ? View.GONE : View.VISIBLE);
+                    emailView.setText(email);
+                    return true;
+                }
+                return false;
+            }
+        });
+        lv_contatos.setAdapter(adapter);
     }
 
 

@@ -85,9 +85,9 @@ public class DroidControleRemoto extends AppCompatActivity {
         Contato contato = persintencia.ObterContato(idTo);
         if (contato != null) {
             token = contato.getToken();
-            String deviceName = contato.getDevice();
+            String deviceName = Methods.formatDeviceName(contato.getDevice());
             if (deviceName == null || deviceName.isEmpty()) {
-                deviceName = contato.getEmail();
+                deviceName = Methods.formatEmailForDisplay(contato.getEmail());
             }
             tv_controlando.setText(deviceName);
         } else {

@@ -346,8 +346,8 @@ public class Persintencia extends SQLiteOpenHelper {
                 HMContato item = new HMContato();
                 //
                 item.put(HMContato.ID, cursor.getString(cursor.getColumnIndex(ID)));
-                item.put(HMContato.EMAIL, cursor.getString(cursor.getColumnIndex(EMAIL)));
-                item.put(HMContato.DEVICE, cursor.getString(cursor.getColumnIndex(DEVICE)));
+                item.put(HMContato.EMAIL, Methods.formatEmailForDisplay(cursor.getString(cursor.getColumnIndex(EMAIL))));
+                item.put(HMContato.DEVICE, Methods.formatDeviceName(cursor.getString(cursor.getColumnIndex(DEVICE))));
                 //
                 contatos.add(item);
             }
