@@ -6,7 +6,15 @@
     <string name="permission_required_message">Permissões necessárias para registrar e controlar este aparelho.</string>
     <string name="export_error_message">Não foi possível exportar o arquivo.</string>
     <string name="sync_service_message">Sincronização de comandos ativa.</string>
-    <string name="contacts_current_device">Este aparelho: %1$s</string>
+    <string name="contacts_title">Dispositivos</string>
+    <string name="contacts_subtitle">Toque em um aparelho para controlar localização, mídia e arquivos.</string>
+    <string name="contacts_available_devices">Disponíveis agora</string>
+    <string name="contacts_empty_message">Abra o app em outro aparelho para ele aparecer aqui.</string>
+    <string name="contact_icon_text">RA</string>
+    <string name="contact_identify_device">Identificar</string>
+    <string name="contact_identifying_device">Buscando...</string>
+    <string name="contact_identified_device">Nome atualizado: %1$s</string>
+    <string name="contact_identify_not_found">Não encontrei o nome comercial desse modelo.</string>
     <string name="remote_title">Controle remoto</string>
     <string name="remote_subtitle">Comandos para o aparelho selecionado</string>
     <string name="remote_controlling">Controlando</string>

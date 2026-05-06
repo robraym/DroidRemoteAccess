@@ -235,6 +235,17 @@ public class Persintencia extends SQLiteOpenHelper {
         getWritableDatabase().update(CONTATOS, cv, FILTRO, argumentos);
     }
 
+    public void AtualizarDeviceContato(String id, String device) {
+        if (id == null || id.isEmpty() || device == null || device.isEmpty()) {
+            return;
+        }
+        ContentValues cv = new ContentValues();
+        String[] argumentos = new String[]{id};
+        String FILTRO = ID + " = ?";
+        cv.put(DEVICE, device);
+        getWritableDatabase().update(CONTATOS, cv, FILTRO, argumentos);
+    }
+
     public void ApagarContatosMesmoDispositivo(String device, String idAtual) {
         if (device == null || device.isEmpty() || idAtual == null || idAtual.isEmpty()) {
             return;
@@ -345,9 +356,13 @@ public class Persintencia extends SQLiteOpenHelper {
             while (cursor.moveToNext()) {
                 HMContato item = new HMContato();
                 //
-                item.put(HMContato.ID, cursor.getString(cursor.getColumnIndex(ID)));
+                String id = cursor.getString(cursor.getColumnIndex(ID));
+                String rawDevice = cursor.getString(cursor.getColumnIndex(DEVICE));
+                item.put(HMContato.ID, id);
                 item.put(HMContato.EMAIL, Methods.formatEmailForDisplay(cursor.getString(cursor.getColumnIndex(EMAIL))));
-                item.put(HMContato.DEVICE, Methods.formatDeviceName(cursor.getString(cursor.getColumnIndex(DEVICE))));
+                item.put(HMContato.DEVICE, Methods.formatDeviceName(rawDevice));
+                item.put(HMContato.DEVICE_RAW, rawDevice == null ? "" : rawDevice);
+                item.put(HMContato.DEVICE_LOOKUP, id + "|" + (rawDevice == null ? "" : rawDevice));
                 //
                 contatos.add(item);
             }

@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "models": {
+    "SM-F966B": "Galaxy Z Fold7",
+    "SM-F966B/DS": "Galaxy Z Fold7",
+    "SM-F966U": "Galaxy Z Fold7",
+    "SM-F966U1": "Galaxy Z Fold7",
+    "SM-F766B": "Galaxy Z Flip7",
+    "SM-F766B/DS": "Galaxy Z Flip7",
+    "SM-F766U": "Galaxy Z Flip7",
+    "SM-F766U1": "Galaxy Z Flip7",
+    "SM-F761B": "Galaxy Z Flip7 FE",
+    "SM-F761B/DS": "Galaxy Z Flip7 FE",
+    "SM-S931B": "Galaxy S25",
+    "SM-S931B/DS": "Galaxy S25",
+    "SM-S931U": "Galaxy S25",
+    "SM-S936B": "Galaxy S25+",
+    "SM-S936B/DS": "Galaxy S25+",
+    "SM-S936U": "Galaxy S25+",
+    "SM-S937B": "Galaxy S25 Edge",
+    "SM-S937B/DS": "Galaxy S25 Edge",
+    "SM-S937U": "Galaxy S25 Edge",
+    "SM-S938B": "Galaxy S25 Ultra",
+    "SM-S938B/DS": "Galaxy S25 Ultra",
+    "SM-S938U": "Galaxy S25 Ultra"
+  },
+  "prefixes": {
+    "SM-F966": "Galaxy Z Fold7",
+    "SM-F766": "Galaxy Z Flip7",
+    "SM-F761": "Galaxy Z Flip7 FE",
+    "SM-S931": "Galaxy S25",
+    "SM-S936": "Galaxy S25+",
+    "SM-S937": "Galaxy S25 Edge",
+    "SM-S938": "Galaxy S25 Ultra"
+  }
+}

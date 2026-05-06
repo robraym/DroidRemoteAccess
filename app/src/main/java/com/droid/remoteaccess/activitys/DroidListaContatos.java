@@ -4,19 +4,20 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.AdapterView;
+import android.widget.Button;
 import android.widget.ListView;
 import android.widget.SimpleAdapter;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.droid.remoteaccess.feature.Constantes;
-import com.droid.remoteaccess.feature.Contato;
 import com.droid.remoteaccess.feature.HMContato;
 import com.droid.remoteaccess.dbase.Persintencia;
 import com.droid.remoteaccess.R;
+import com.droid.remoteaccess.others.DeviceNameResolver;
 import com.droid.remoteaccess.others.Methods;
 import com.droid.remoteaccess.services.BrokerSyncService;
 import com.droid.remoteaccess.services.RegistrationIntentService;
@@ -31,10 +32,8 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 public class DroidListaContatos extends AppCompatActivity {
 
     private Context context;
-    private TextView tv_nomeAparelho;
     private ListView lv_contatos;
     private Persintencia persintencia;
-    private Contato contato;
     private ReceiverResponseListaContatos receiver;
 
     @Override
@@ -44,13 +43,10 @@ public class DroidListaContatos extends AppCompatActivity {
 
         context = getBaseContext();
         Methods.AskNotificationPermission(this, getApplicationContext());
-        tv_nomeAparelho = (TextView) findViewById(R.id.telalistacontatos_tv_nomeAparelho);
         lv_contatos = (ListView) findViewById(R.id.telalistacontatos__lv_contatos);
         lv_contatos.setEmptyView(findViewById(R.id.telalistacontatos_tv_vazio));
         persintencia = new Persintencia(context);
 
-        contato = persintencia.ObterContato(Methods.getIDDevice(context));
-        tv_nomeAparelho.setText(getString(R.string.contacts_current_device, Methods.getNameDevice(context)));
         ContextCompat.startForegroundService(this, new Intent(this, BrokerSyncService.class));
         startService(new Intent(this, RegistrationIntentService.class));
 
@@ -100,8 +96,8 @@ public class DroidListaContatos extends AppCompatActivity {
 
     private void atualizaAdapterContatos() {
 
-        String[] from = {HMContato.DEVICE, HMContato.EMAIL};
-        int[] to = {R.id.celula_tv_device, R.id.celula_tv_email};
+        String[] from = {HMContato.DEVICE, HMContato.EMAIL, HMContato.DEVICE_LOOKUP};
+        int[] to = {R.id.celula_tv_device, R.id.celula_tv_email, R.id.celula_btn_identificar};
 
         SimpleAdapter adapter = new SimpleAdapter(context,
                 persintencia.listaContatos(Methods.getIDDevice(context)),
@@ -118,10 +114,87 @@ public class DroidListaContatos extends AppCompatActivity {
                     emailView.setText(email);
                     return true;
                 }
+                if (view.getId() == R.id.celula_btn_identificar && view instanceof Button) {
+                    Button lookupButton = (Button) view;
+                    LookupPayload payload = LookupPayload.from(textRepresentation);
+                    boolean showLookup = payload.isValid()
+                            && DeviceNameResolver.shouldOfferLookup(payload.rawDevice);
+                    lookupButton.setVisibility(showLookup ? View.VISIBLE : View.GONE);
+                    lookupButton.setEnabled(showLookup);
+                    lookupButton.setText(R.string.contact_identify_device);
+                    lookupButton.setOnClickListener(null);
+                    if (showLookup) {
+                        lookupButton.setOnClickListener(new View.OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+                                identificarNomeAparelho(payload.id, payload.rawDevice, (Button) v);
+                            }
+                        });
+                    }
+                    return true;
+                }
                 return false;
             }
         });
         lv_contatos.setAdapter(adapter);
+    }
+
+    private void identificarNomeAparelho(final String idContato, final String deviceRaw, final Button button) {
+        button.setEnabled(false);
+        button.setText(R.string.contact_identifying_device);
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String deviceName = DeviceNameResolver.resolve(getApplicationContext(), deviceRaw);
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!deviceName.isEmpty()) {
+                            persintencia.AtualizarDeviceContato(idContato, deviceName);
+                            Toast.makeText(DroidListaContatos.this,
+                                    getString(R.string.contact_identified_device, deviceName),
+                                    Toast.LENGTH_SHORT).show();
+                            atualizaAdapterContatos();
+                            return;
+                        }
+
+                        button.setEnabled(true);
+                        button.setText(R.string.contact_identify_device);
+                        Toast.makeText(DroidListaContatos.this,
+                                R.string.contact_identify_not_found,
+                                Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private static class LookupPayload {
+        private final String id;
+        private final String rawDevice;
+
+        private LookupPayload(String id, String rawDevice) {
+            this.id = id == null ? "" : id;
+            this.rawDevice = rawDevice == null ? "" : rawDevice;
+        }
+
+        private static LookupPayload from(String payload) {
+            if (payload == null) {
+                return new LookupPayload("", "");
+            }
+            int separator = payload.indexOf('|');
+            if (separator < 0) {
+                return new LookupPayload("", "");
+            }
+            return new LookupPayload(
+                    payload.substring(0, separator),
+                    payload.substring(separator + 1));
+        }
+
+        private boolean isValid() {
+            return !id.isEmpty() && !rawDevice.isEmpty();
+        }
     }
 
 

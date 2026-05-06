@@ -4,9 +4,9 @@
     android:layout_height="match_parent"
     android:background="@drawable/bg_screen_dark"
     android:orientation="vertical"
-    android:paddingLeft="18dp"
-    android:paddingTop="24dp"
-    android:paddingRight="18dp"
+    android:paddingLeft="20dp"
+    android:paddingTop="34dp"
+    android:paddingRight="20dp"
     android:paddingBottom="20dp">
 
     <TextView
@@ -15,37 +15,29 @@
         android:ellipsize="end"
         android:includeFontPadding="false"
         android:maxLines="1"
-        android:text="Remote Access"
+        android:text="@string/contacts_title"
         android:textColor="@color/textPrimaryDark"
-        android:textSize="21sp"
+        android:textSize="28sp"
         android:textStyle="bold" />
 
     <TextView
-        android:id="@+id/telalistacontatos_tv_nomeAparelho"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:layout_marginBottom="22dp"
-        android:background="@drawable/bg_device_pill"
-        android:ellipsize="end"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="20dp"
         android:includeFontPadding="false"
-        android:maxLines="1"
-        android:paddingLeft="14dp"
-        android:paddingTop="8dp"
-        android:paddingRight="14dp"
-        android:paddingBottom="8dp"
-        android:text="Aparelho"
+        android:text="@string/contacts_subtitle"
         android:textColor="@color/textSecondaryDark"
-        android:textSize="12sp" />
+        android:textSize="13sp" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="10dp"
+        android:layout_marginBottom="12dp"
         android:includeFontPadding="false"
-        android:text="Dispositivos disponíveis"
+        android:text="@string/contacts_available_devices"
         android:textColor="@color/textPrimaryDark"
-        android:textSize="16sp"
+        android:textSize="15sp"
         android:textStyle="bold" />
 
 
@@ -68,7 +60,7 @@
         android:background="@drawable/bg_contact_card"
         android:gravity="center"
         android:padding="22dp"
-        android:text="Abra o app em outro aparelho para ele aparecer aqui."
+        android:text="@string/contacts_empty_message"
         android:textColor="@color/textSecondaryDark"
         android:textSize="14sp" />
 
