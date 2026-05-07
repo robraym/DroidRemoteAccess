@@ -20,6 +20,11 @@ import com.google.firebase.database.ValueEventListener;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class FirebaseRemoteTransport {
 
@@ -111,6 +116,48 @@ public final class FirebaseRemoteTransport {
         } catch (Exception ex) {
             Log.d(TAG, "Failed to queue Firebase message", ex);
             return false;
+        }
+    }
+
+    public static boolean sendMessageToDeviceBlocking(Context context, String targetId,
+                                                       Bundle data, long timeoutMs) {
+        if (context == null || targetId == null || targetId.isEmpty() || data == null || !isAvailable(context)) {
+            return false;
+        }
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicBoolean success = new AtomicBoolean(false);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Map<String, Object> message = toMap(data);
+            message.put("createdAt", ServerValue.TIMESTAMP);
+            FirebaseDatabase.getInstance()
+                    .getReference(ROOT)
+                    .child("mailboxes")
+                    .child(targetId)
+                    .push()
+                    .setValue(message)
+                    .addOnCompleteListener(executor, task -> {
+                        success.set(task.isSuccessful());
+                        if (!task.isSuccessful()) {
+                            Log.w(TAG, "Firebase message failed: "
+                                    + data.getString(Constantes.MESSAGE), task.getException());
+                        }
+                        latch.countDown();
+                    });
+
+            boolean completed = latch.await(Math.max(1000, timeoutMs), TimeUnit.MILLISECONDS);
+            if (!completed) {
+                Log.w(TAG, "Firebase message timed out: " + data.getString(Constantes.MESSAGE));
+                return false;
+            }
+            Log.i(TAG, "Firebase message delivered: " + data.getString(Constantes.MESSAGE));
+            return success.get();
+        } catch (Exception ex) {
+            Log.d(TAG, "Failed to deliver Firebase message", ex);
+            return false;
+        } finally {
+            executor.shutdown();
         }
     }
 

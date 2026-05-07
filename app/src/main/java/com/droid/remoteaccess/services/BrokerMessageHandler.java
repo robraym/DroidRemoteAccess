@@ -490,23 +490,40 @@ public final class BrokerMessageHandler {
         }
 
         String fileUrl = data.getString(Constantes.FILE_ATTACHMENT_URL);
-        String fileKey = commandId + ":" + fileUrl;
+        String inlineText = data.getString(Constantes.FILE_ATTACHMENT_TEXT);
+        String fileKey = commandId + ":" + fileUrl + ":" + (inlineText == null ? "" : inlineText.hashCode());
         if (isDuplicateMessage(serviceContext, PROCESSED_FILES, fileKey)) {
             Log.d(TAG, "Ignoring duplicate file response: " + fileKey);
             return;
         }
 
+        final Context appContext = serviceContext.getApplicationContext();
+        final Bundle fileData = new Bundle(data);
+        final String finalCommandId = commandId;
+        final String finalResponseMessage = responseMessage;
+        final String finalFileType = fileType;
+        Thread downloadWorker = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                receiveFileInBackground(appContext, fileData, finalCommandId, finalResponseMessage, finalFileType);
+            }
+        }, "RemoteFileDownload");
+        downloadWorker.start();
+    }
+
+    private static void receiveFileInBackground(Context appContext, Bundle data, String commandId,
+                                                String responseMessage, String fileType) {
         try {
-            File receivedFile = FileTransferHelper.downloadAttachment(serviceContext.getApplicationContext(), data);
+            File receivedFile = FileTransferHelper.downloadAttachment(appContext, data);
             boolean notificationShown;
             if ("audio".equalsIgnoreCase(fileType)) {
-                notificationShown = FileTransferHelper.showAudioReceivedNotification(serviceContext.getApplicationContext(), receivedFile);
+                notificationShown = FileTransferHelper.showAudioReceivedNotification(appContext, receivedFile);
             } else if ("video".equalsIgnoreCase(fileType)) {
-                notificationShown = FileTransferHelper.showVideoReceivedNotification(serviceContext.getApplicationContext(), receivedFile);
+                notificationShown = FileTransferHelper.showVideoReceivedNotification(appContext, receivedFile);
             } else if ("photo".equalsIgnoreCase(fileType)) {
-                notificationShown = FileTransferHelper.showPhotoReceivedNotification(serviceContext.getApplicationContext(), receivedFile);
+                notificationShown = FileTransferHelper.showPhotoReceivedNotification(appContext, receivedFile);
             } else {
-                notificationShown = FileTransferHelper.showMessagesReceivedNotification(serviceContext.getApplicationContext(), receivedFile);
+                notificationShown = FileTransferHelper.showMessagesReceivedNotification(appContext, receivedFile);
             }
 
             Intent mIntent = new Intent();
@@ -516,11 +533,30 @@ public final class BrokerMessageHandler {
             mIntent.putExtra(Constantes.COMMAND_ID, commandId);
             mIntent.putExtra(Constantes.FILE_LOCAL_PATH, receivedFile.getAbsolutePath());
             mIntent.putExtra(Constantes.NOTIFICATION_SHOWN, notificationShown);
-            LocalBroadcastManager.getInstance(serviceContext).sendBroadcast(mIntent);
+            LocalBroadcastManager.getInstance(appContext).sendBroadcast(mIntent);
             Log.i(TAG, "File received: " + receivedFile.getAbsolutePath());
         } catch (Exception ex) {
             Log.e(TAG, "Failed to receive file", ex);
+            Intent errorIntent = new Intent();
+            errorIntent.setAction(Constantes.RECEIVERRESPONSECONTROLEREMOTO);
+            errorIntent.addCategory(Intent.CATEGORY_DEFAULT);
+            errorIntent.putExtra(Constantes.MESSAGE, getFileErrorResponse(responseMessage));
+            errorIntent.putExtra(Constantes.COMMAND_ID, commandId);
+            LocalBroadcastManager.getInstance(appContext).sendBroadcast(errorIntent);
         }
+    }
+
+    private static String getFileErrorResponse(String responseMessage) {
+        if ("r:uv".equalsIgnoreCase(responseMessage)) {
+            return "r:uv:error";
+        }
+        if ("r:up".equalsIgnoreCase(responseMessage)) {
+            return "r:up:error";
+        }
+        if ("r:um".equalsIgnoreCase(responseMessage)) {
+            return "r:um:error";
+        }
+        return "r:ua:error";
     }
 
     private static boolean isCommandForThisDevice(Context context, String idFrom, String idTo, String deviceTo) {

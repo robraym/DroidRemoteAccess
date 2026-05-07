@@ -36,6 +36,7 @@ import android.view.Surface;
 import com.droid.remoteaccess.R;
 import com.droid.remoteaccess.feature.Constantes;
 import com.droid.remoteaccess.others.Methods;
+import com.droid.remoteaccess.services.BrokerMessageHandler;
 import com.droid.remoteaccess.services.BrokerMessaging;
 import com.droid.remoteaccess.services.FileTransferHelper;
 
@@ -773,17 +774,8 @@ public class DroidCameraCaptureService extends Service {
                 return;
             }
 
-            Bundle data = new Bundle();
-            data.putString(Constantes.MESSAGE, responseMessage);
-            data.putString(Constantes.ID_FROM, Methods.getIDDevice(getApplicationContext()));
-            data.putString(Constantes.EMAIL_FROM, Methods.getEmail(getApplicationContext()));
-            data.putString(Constantes.TOKEN_FROM, BrokerMessaging.getDeviceTopic(getApplicationContext()));
-            data.putString(Constantes.DEVICE_FROM, Methods.getNameDevice(getApplicationContext()));
-            data.putString(Constantes.ID_TO, requesterId);
-            data.putString(Constantes.DEVICE_TO, requesterDevice);
-            data.putString(Constantes.COMMAND_ID, commandId);
-
-            BrokerMessaging.publishResponse(responseToken, data);
+            BrokerMessageHandler.sendResponseToServer(getApplicationContext(),
+                    responseToken, responseMessage, null, requesterId, requesterDevice, commandId);
             Log.i(TAG, "Camera command response sent: " + responseMessage);
         } catch (Exception ex) {
             Log.e(TAG, "Failed to send camera command response: " + responseMessage, ex);

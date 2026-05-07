@@ -6,6 +6,18 @@ if (file('google-services.json').exists()) {
     apply plugin: 'com.google.gms.google-services'
 }
 
+def cloudinaryProps = new Properties()
+def cloudinaryConfigFile = rootProject.file('cloudinary.properties')
+if (cloudinaryConfigFile.exists()) {
+    cloudinaryConfigFile.withInputStream { stream ->
+        cloudinaryProps.load(stream)
+    }
+}
+
+def escapeBuildConfigString = { value ->
+    (value ?: "").replace("\\", "\\\\").replace("\"", "\\\"")
+}
+
 android {
     namespace 'com.droid.remoteaccess'
     compileSdk 35
@@ -16,6 +28,12 @@ android {
         targetSdk 35
         versionCode 2
         versionName "1.0.1"
+        buildConfigField "String", "CLOUDINARY_CLOUD_NAME", "\"${escapeBuildConfigString(cloudinaryProps.getProperty('cloudinary.cloudName', ''))}\""
+        buildConfigField "String", "CLOUDINARY_UPLOAD_PRESET", "\"${escapeBuildConfigString(cloudinaryProps.getProperty('cloudinary.uploadPreset', ''))}\""
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     compileOptions {

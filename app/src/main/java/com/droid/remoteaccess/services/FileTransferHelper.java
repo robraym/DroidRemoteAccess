@@ -42,6 +42,7 @@ public final class FileTransferHelper {
     private static final String PHOTO_MIME_TYPE = "image/jpeg";
     private static final String TEXT_MIME_TYPE = "text/plain";
     private static final int MAX_INLINE_TEXT_CHARS = 64000;
+    private static final long FIREBASE_FILE_DELIVERY_TIMEOUT_MS = 12000;
     private static final String AUDIO_CHANNEL_ID = "received_audio_files_v2";
     private static final String VIDEO_CHANNEL_ID = "received_video_files_v1";
     private static final String PHOTO_CHANNEL_ID = "received_photo_files_v1";
@@ -79,6 +80,10 @@ public final class FileTransferHelper {
                 return true;
             }
 
+            if (sendFileViaCloudinary(context, tokenTo, requesterId, audioFile, AUDIO_MIME_TYPE, data, "Áudio")) {
+                return true;
+            }
+
             BrokerMessaging.publishAttachment(tokenTo, audioFile, audioFile.getName(), AUDIO_MIME_TYPE, data);
             Log.i(TAG, "Áudio enviado: " + audioFile.getAbsolutePath());
             return true;
@@ -111,6 +116,10 @@ public final class FileTransferHelper {
             if (LocalDiscovery.sendFileToDevice(context.getApplicationContext(), requesterId,
                     messagesFile, messagesFile.getName(), TEXT_MIME_TYPE, data)) {
                 Log.i(TAG, "Mensagens enviadas pela rede local: " + messagesFile.getAbsolutePath());
+                return true;
+            }
+
+            if (sendFileViaCloudinary(context, tokenTo, requesterId, messagesFile, TEXT_MIME_TYPE, data, "Mensagens")) {
                 return true;
             }
 
@@ -176,11 +185,50 @@ public final class FileTransferHelper {
                 return true;
             }
 
+            if (sendFileViaCloudinary(context, tokenTo, requesterId, file, mimeType, data, label)) {
+                return true;
+            }
+
             BrokerMessaging.publishAttachment(tokenTo, file, file.getName(), mimeType, data);
             Log.i(TAG, label + " enviado: " + file.getAbsolutePath());
             return true;
         } catch (Exception ex) {
             Log.e(TAG, "Falha ao enviar arquivo: " + label, ex);
+            return false;
+        }
+    }
+
+    private static boolean sendFileViaCloudinary(Context context, String tokenTo, String requesterId,
+                                                 File file, String mimeType, Bundle data, String label) {
+        if (!CloudinaryUploadClient.isConfigured()) {
+            return false;
+        }
+
+        try {
+            CloudinaryUploadClient.UploadResult result = CloudinaryUploadClient.upload(file, mimeType);
+            data.putString(Constantes.FILE_ATTACHMENT_URL, result.secureUrl);
+            data.putString(Constantes.FILE_ATTACHMENT_SIZE, String.valueOf(result.bytes > 0 ? result.bytes : file.length()));
+
+            boolean firebaseSent = FirebaseRemoteTransport.sendMessageToDeviceBlocking(
+                    context.getApplicationContext(), requesterId, data, FIREBASE_FILE_DELIVERY_TIMEOUT_MS);
+
+            boolean brokerSent = false;
+            try {
+                BrokerMessaging.publishCommand(tokenTo, data);
+                brokerSent = true;
+            } catch (Exception ex) {
+                Log.d(TAG, "URL do Cloudinary enviada pelo Firebase; broker falhou: " + label, ex);
+            }
+
+            if (firebaseSent || brokerSent) {
+                Log.i(TAG, label + " enviado pelo Cloudinary: " + file.getAbsolutePath());
+                return true;
+            }
+
+            Log.w(TAG, "Cloudinary subiu o arquivo, mas não conseguiu entregar a URL: " + label);
+            return false;
+        } catch (Exception ex) {
+            Log.w(TAG, "Falha ao enviar pelo Cloudinary: " + label, ex);
             return false;
         }
     }
