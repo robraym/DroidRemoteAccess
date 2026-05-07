@@ -9,6 +9,7 @@ import android.util.Log;
 
 import com.droid.remoteaccess.feature.Contato;
 import com.droid.remoteaccess.feature.HMContato;
+import com.droid.remoteaccess.others.DeviceNameResolver;
 import com.droid.remoteaccess.others.Methods;
 
 import java.util.ArrayList;
@@ -160,7 +161,7 @@ public class Persintencia extends SQLiteOpenHelper {
         //
         cv.put(EMAIL, contato.getEmail());
         cv.put(TOKEN, contato.getToken());
-        cv.put(DEVICE, contato.getDevice());
+        cv.put(DEVICE, selecionarNomeDeviceParaAtualizacao(contato));
         //
         getWritableDatabase().update(CONTATOS, cv, FILTRO, argumentos);
     }
@@ -174,6 +175,37 @@ public class Persintencia extends SQLiteOpenHelper {
         String FILTRO = ID + " = ?";
         cv.put(DEVICE, device);
         getWritableDatabase().update(CONTATOS, cv, FILTRO, argumentos);
+    }
+
+    private String selecionarNomeDeviceParaAtualizacao(Contato contato) {
+        String novoDevice = contato.getDevice();
+        Contato contatoAtual = ObterContato(contato.getId());
+        if (contatoAtual == null) {
+            return novoDevice;
+        }
+
+        String deviceAtual = contatoAtual.getDevice();
+        if (devePreservarNomeIdentificado(deviceAtual, novoDevice)) {
+            return deviceAtual;
+        }
+        return novoDevice;
+    }
+
+    private boolean devePreservarNomeIdentificado(String deviceAtual, String novoDevice) {
+        if (deviceAtual == null || novoDevice == null) {
+            return false;
+        }
+        String atual = deviceAtual.trim();
+        String novo = novoDevice.trim();
+        if (atual.isEmpty() || novo.isEmpty() || atual.equalsIgnoreCase(novo)) {
+            return false;
+        }
+        if (atual.equalsIgnoreCase("Aparelho Android")) {
+            return false;
+        }
+
+        return !DeviceNameResolver.shouldOfferLookup(atual)
+                && DeviceNameResolver.shouldOfferLookup(novo);
     }
 
     public void ApagarContatosMesmoDispositivo(String device, String idAtual) {

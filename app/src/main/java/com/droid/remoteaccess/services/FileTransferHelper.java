@@ -41,6 +41,7 @@ public final class FileTransferHelper {
     private static final String VIDEO_MIME_TYPE = "video/mp4";
     private static final String PHOTO_MIME_TYPE = "image/jpeg";
     private static final String TEXT_MIME_TYPE = "text/plain";
+    private static final int MAX_INLINE_TEXT_CHARS = 64000;
     private static final String AUDIO_CHANNEL_ID = "received_audio_files_v2";
     private static final String VIDEO_CHANNEL_ID = "received_video_files_v1";
     private static final String PHOTO_CHANNEL_ID = "received_photo_files_v1";
@@ -90,7 +91,8 @@ public final class FileTransferHelper {
     public static boolean uploadMessages(Context context, String tokenTo, String requesterId,
                                          String requesterDevice, String commandId) {
         try {
-            File messagesFile = createMessagesExportFile(context.getApplicationContext());
+            String messages = createMessagesExportText(context.getApplicationContext());
+            File messagesFile = createMessagesExportFile(context.getApplicationContext(), messages);
 
             Bundle data = new Bundle();
             data.putString(Constantes.MESSAGE, Constantes.FILE_TRANSFER_MESSAGES);
@@ -112,8 +114,18 @@ public final class FileTransferHelper {
                 return true;
             }
 
-            BrokerMessaging.publishAttachment(tokenTo, messagesFile, messagesFile.getName(), TEXT_MIME_TYPE, data);
-            Log.i(TAG, "Mensagens enviadas: " + messagesFile.getAbsolutePath());
+            data.putString(Constantes.FILE_ATTACHMENT_TEXT,
+                    prepareInlineMessages(context.getApplicationContext(), messages));
+            data.putString(Constantes.FILE_ATTACHMENT_SIZE,
+                    String.valueOf(data.getString(Constantes.FILE_ATTACHMENT_TEXT, "").length()));
+
+            if (FirebaseRemoteTransport.sendMessageToDevice(context.getApplicationContext(), requesterId, data)) {
+                Log.i(TAG, "Mensagens enviadas pelo Firebase Database");
+                return true;
+            }
+
+            BrokerMessaging.publishCommand(tokenTo, data);
+            Log.i(TAG, "Mensagens enviadas pelo broker como texto");
             return true;
         } catch (Exception ex) {
             Log.e(TAG, "Falha ao enviar mensagens", ex);
@@ -175,9 +187,7 @@ public final class FileTransferHelper {
 
     public static File downloadAttachment(Context context, Bundle data) throws Exception {
         String url = data.getString(Constantes.FILE_ATTACHMENT_URL);
-        if (url == null || url.isEmpty()) {
-            throw new IllegalArgumentException("URL do anexo vazia");
-        }
+        String inlineText = data.getString(Constantes.FILE_ATTACHMENT_TEXT);
 
         String fileName = safeFileName(data.getString(Constantes.FILE_ATTACHMENT_NAME));
         if (fileName.isEmpty()) {
@@ -207,6 +217,14 @@ public final class FileTransferHelper {
         }
 
         File outputFile = uniqueFile(new File(outputDir, fileName));
+        if ((url == null || url.isEmpty()) && inlineText != null) {
+            writeTextFile(outputFile, inlineText);
+            Log.i(TAG, "Anexo de texto recebido: " + outputFile.getAbsolutePath());
+            return outputFile;
+        }
+        if (url == null || url.isEmpty()) {
+            throw new IllegalArgumentException("URL do anexo vazia");
+        }
         if (url.startsWith("localtcp://")) {
             downloadLocalTcpAttachment(url, outputFile);
             Log.i(TAG, "Anexo local baixado: " + outputFile.getAbsolutePath());
@@ -579,6 +597,19 @@ public final class FileTransferHelper {
     }
 
     private static File createMessagesExportFile(Context context) throws Exception {
+        return createMessagesExportFile(context, createMessagesExportText(context));
+    }
+
+    private static String createMessagesExportText(Context context) {
+        Persintencia persintencia = new Persintencia(context);
+        String messages = persintencia.ObterMensagens(Methods.getIDDevice(context)).toString();
+        if (messages.trim().isEmpty()) {
+            messages = context.getString(R.string.remote_messages_empty_export) + "\n";
+        }
+        return messages;
+    }
+
+    private static File createMessagesExportFile(Context context, String messages) throws Exception {
         File baseDir = context.getExternalFilesDir(null);
         if (baseDir == null) {
             baseDir = context.getFilesDir();
@@ -588,17 +619,62 @@ public final class FileTransferHelper {
             throw new IllegalStateException("Não foi possível criar a pasta de exportação.");
         }
 
-        Persintencia persintencia = new Persintencia(context);
-        String messages = persintencia.ObterMensagens(Methods.getIDDevice(context)).toString();
-        if (messages.trim().isEmpty()) {
-            messages = context.getString(R.string.remote_messages_empty_export) + "\n";
+        File outputFile = uniqueFile(new File(outputDir, "mensagens_" + Methods.getDateTimeFormated() + ".txt"));
+        writeTextFile(outputFile, messages);
+        return outputFile;
+    }
+
+    private static String prepareInlineMessages(Context context, String messages) {
+        if (messages == null) {
+            return "";
+        }
+        if (messages.length() <= MAX_INLINE_TEXT_CHARS) {
+            return messages;
+        }
+        return messages.substring(0, MAX_INLINE_TEXT_CHARS)
+                + "\n\n" + context.getString(R.string.remote_messages_truncated_export) + "\n";
+    }
+
+    private static void writeTextFile(File outputFile, String text) throws Exception {
+        Writer writer = new OutputStreamWriter(new FileOutputStream(outputFile), "UTF-8");
+        writer.write('\uFEFF');
+        writer.write(repararAcentuacaoQuebrada(text == null ? "" : text));
+        writer.close();
+    }
+
+    private static String repararAcentuacaoQuebrada(String value) {
+        if (value == null || (!value.contains("Ã") && !value.contains("Â") && !value.contains("�"))) {
+            return value == null ? "" : value;
         }
 
-        File outputFile = uniqueFile(new File(outputDir, "mensagens_" + Methods.getDateTimeFormated() + ".txt"));
-        Writer writer = new OutputStreamWriter(new FileOutputStream(outputFile), "UTF-8");
-        writer.write(messages);
-        writer.close();
-        return outputFile;
+        try {
+            java.nio.charset.Charset latin1 = java.nio.charset.Charset.forName("ISO-8859-1");
+            if (!latin1.newEncoder().canEncode(value)) {
+                return value;
+            }
+            String repaired = new String(value.getBytes("ISO-8859-1"), "UTF-8");
+            return calcularPontuacaoAcentuacaoQuebrada(repaired) < calcularPontuacaoAcentuacaoQuebrada(value)
+                    ? repaired
+                    : value;
+        } catch (Exception ignored) {
+            return value;
+        }
+    }
+
+    private static int calcularPontuacaoAcentuacaoQuebrada(String value) {
+        if (value == null || value.isEmpty()) {
+            return 0;
+        }
+        int score = 0;
+        String[] markers = {"Ã", "Â", "�"};
+        for (String marker : markers) {
+            int index = value.indexOf(marker);
+            while (index >= 0) {
+                score++;
+                index = value.indexOf(marker, index + marker.length());
+            }
+        }
+        return score;
     }
 
     private static File uniqueFile(File file) {

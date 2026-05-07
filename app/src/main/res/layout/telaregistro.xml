@@ -3,6 +3,7 @@
     android:id="@+id/ll_registro"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@drawable/bg_screen_dark"
     android:orientation="horizontal">
 
     <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -25,6 +26,7 @@
             android:layout_weight="3"
             android:layout_height="wrap_content"
             android:text="@string/registering_message"
+            android:textColor="@color/textPrimaryDark"
             android:textSize="20sp" />
     </LinearLayout>
 
@@ -42,6 +44,7 @@
             android:layout_marginBottom="40dp"
             android:gravity="center"
             android:text="Registro do Aparelho"
+            android:textColor="@color/textPrimaryDark"
             android:textSize="25sp" />
 
         <TextView
@@ -49,6 +52,7 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="15dp"
             android:text="Não foi possível registrar esse aparelho, por favor, tente novamente mais tarde."
+            android:textColor="@color/textSecondaryDark"
             android:textSize="15sp" />
 
         <Button
@@ -56,8 +60,11 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="15dp"
+            android:background="@drawable/bg_remote_button_oneui"
             android:gravity="center"
-            android:text="Registrar aparelho" />
+            android:text="Registrar aparelho"
+            android:textAllCaps="false"
+            android:textColor="@color/textPrimaryDark" />
 
     </LinearLayout>
 

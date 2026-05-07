@@ -46,6 +46,7 @@ public class BrokerSyncService extends Service {
         startForegroundCompat();
         running = true;
         registerScreenStateReceiver();
+        FirebaseRemoteTransport.start(getApplicationContext());
         LocalDiscovery.start(getApplicationContext());
         worker = new Thread(new Runnable() {
             @Override
@@ -79,6 +80,7 @@ public class BrokerSyncService extends Service {
         startForegroundCompat();
         running = true;
         registerScreenStateReceiver();
+        FirebaseRemoteTransport.start(getApplicationContext());
         LocalDiscovery.start(getApplicationContext());
         if (worker == null || !worker.isAlive()) {
             running = true;
@@ -102,6 +104,7 @@ public class BrokerSyncService extends Service {
             public void onReceive(Context context, Intent intent) {
                 String action = intent == null ? "" : intent.getAction();
                 Log.d(TAG, "Screen state changed: " + action);
+                FirebaseRemoteTransport.updatePresenceAsync(getApplicationContext());
                 LocalDiscovery.sendAnnounceAsync(getApplicationContext());
             }
         };
@@ -177,6 +180,7 @@ public class BrokerSyncService extends Service {
             }
             screenStateReceiver = null;
         }
+        FirebaseRemoteTransport.stop();
         LocalDiscovery.stop();
         super.onDestroy();
     }

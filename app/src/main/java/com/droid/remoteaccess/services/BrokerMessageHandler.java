@@ -80,15 +80,17 @@ public final class BrokerMessageHandler {
                 data.putString(Constantes.LONGITUDE, String.valueOf(localizacao.getLongitude()));
             }
 
+            boolean firebaseSent = FirebaseRemoteTransport.sendMessageToDevice(
+                    context.getApplicationContext(), requesterId, data);
             boolean localSent = LocalDiscovery.sendMessageToDevice(context.getApplicationContext(), requesterId, data);
             try {
                 BrokerMessaging.publishResponse(token_to, data);
                 Log.i(TAG, "Response sent: " + message);
             } catch (Exception ex) {
-                if (!localSent) {
+                if (!firebaseSent && !localSent) {
                     throw ex;
                 }
-                Log.d(TAG, "Response sent locally; broker failed: " + message, ex);
+                Log.d(TAG, "Response sent by Firebase/local; broker failed: " + message, ex);
             }
         } catch (Exception ex) {
             Log.d(TAG, "Failed to send response: " + message, ex);

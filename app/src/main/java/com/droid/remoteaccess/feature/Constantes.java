@@ -33,6 +33,7 @@ public class Constantes {
     public static final String FILE_ATTACHMENT_NAME = "file_attachment_name";
     public static final String FILE_ATTACHMENT_MIME = "file_attachment_mime";
     public static final String FILE_ATTACHMENT_SIZE = "file_attachment_size";
+    public static final String FILE_ATTACHMENT_TEXT = "file_attachment_text";
     public static final String FILE_LOCAL_PATH = "file_local_path";
     public static final String FILE_ORIGINAL_NAME = "file_original_name";
     public static final String FILE_CHUNK_ID = "file_chunk_id";

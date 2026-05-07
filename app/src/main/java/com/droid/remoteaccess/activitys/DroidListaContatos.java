@@ -25,6 +25,7 @@ import com.droid.remoteaccess.others.DevicePresence;
 import com.droid.remoteaccess.others.Methods;
 import com.droid.remoteaccess.services.BrokerMessaging;
 import com.droid.remoteaccess.services.BrokerSyncService;
+import com.droid.remoteaccess.services.FirebaseRemoteTransport;
 import com.droid.remoteaccess.services.LocalDiscovery;
 import com.droid.remoteaccess.services.RegistrationIntentService;
 
@@ -373,6 +374,7 @@ public class DroidListaContatos extends AppCompatActivity {
         lastDiscoveryRequestAt = now;
         discoveryRequestInFlight = true;
         final String requestId = Methods.getIDDevice(getApplicationContext()) + "_discover_" + now;
+        FirebaseRemoteTransport.registerDeviceAsync(getApplicationContext());
         LocalDiscovery.sendDiscoveryRequestAsync(getApplicationContext());
 
         new Thread(new Runnable() {

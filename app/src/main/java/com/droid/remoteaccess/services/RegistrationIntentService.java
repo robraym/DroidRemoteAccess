@@ -75,6 +75,7 @@ public class RegistrationIntentService extends IntentService {
                 }
 
                 try {
+                    FirebaseRemoteTransport.registerDeviceAsync(context);
                     LocalDiscovery.sendAnnounceAsync(context);
                     BrokerMessaging.publishContact(context, id_from, email, token, device);
                     Log.i(TAG, "Contact announcement sent");
@@ -114,15 +115,16 @@ public class RegistrationIntentService extends IntentService {
                 }
                 data.putString(Constantes.COMMAND_ID, commandId);
                 data.putString(Constantes.MESSAGE, message);
+                boolean firebaseSent = FirebaseRemoteTransport.sendMessageToDevice(context, id_to, data);
                 boolean localSent = LocalDiscovery.sendMessageToDevice(context, id_to, data);
                 try {
                     BrokerMessaging.publishCommand(token, data);
                     Log.i(TAG, "Command sent: " + message);
                 } catch (Exception ex) {
-                    if (!localSent) {
+                    if (!firebaseSent && !localSent) {
                         throw ex;
                     }
-                    Log.d(TAG, "Command sent locally; broker failed: " + message, ex);
+                    Log.d(TAG, "Command sent by Firebase/local; broker failed: " + message, ex);
                 }
             }
 

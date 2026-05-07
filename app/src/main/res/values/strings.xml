@@ -104,6 +104,7 @@
     <string name="remote_messages_not_available">Não foi possível enviar as mensagens do aparelho remoto.</string>
     <string name="remote_messages_transfer_waiting">Mensagens enviadas pelo aparelho remoto. Aguardando download.</string>
     <string name="remote_messages_empty_export">Nenhuma mensagem capturada neste aparelho.</string>
+    <string name="remote_messages_truncated_export">Conteúdo truncado para envio sem Storage.</string>
     <string name="remote_audio_recording_channel">Gravação remota</string>
     <string name="remote_audio_recording_title">Gravando áudio</string>
     <string name="remote_audio_recording_text">O Remote Access está gravando neste aparelho.</string>

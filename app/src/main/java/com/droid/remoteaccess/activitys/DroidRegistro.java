@@ -45,10 +45,17 @@ public class DroidRegistro extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.telaregistro);
-
         context = getBaseContext();
         persintencia = new Persintencia(context);
+
+        if (ContatoCadastradoValido()) {
+            ChamaListaContatos();
+            finish();
+            return;
+        }
+
+        setContentView(R.layout.telaregistro);
+
         btn_registrar = (Button) findViewById(R.id.telaregistro_btn_registrar);
         mInformationTextView = (TextView) findViewById(R.id.informationTextView);
         mRegistrationProgressBar = (ProgressBar) findViewById(R.id.registrationProgressBar);
@@ -154,6 +161,17 @@ public class DroidRegistro extends AppCompatActivity {
     }
 
     private boolean ContatoCadastrado() {
+        boolean contatoCadastrado = ContatoCadastradoValido();
+
+        if (!contatoCadastrado) {
+            Intent intent = new Intent(DroidRegistro.this, RegistrationIntentService.class);
+            startService(intent);
+        }
+        return contatoCadastrado;
+
+    }
+
+    private boolean ContatoCadastradoValido() {
         String deviceId = Methods.getIDDevice(context);
         boolean contatoCadastrado = persintencia.JaExisteContatoCadastrado(deviceId);
 
@@ -164,13 +182,7 @@ public class DroidRegistro extends AppCompatActivity {
                 contatoCadastrado = false;
             }
         }
-
-        if (!contatoCadastrado) {
-            Intent intent = new Intent(DroidRegistro.this, RegistrationIntentService.class);
-            startService(intent);
-        }
         return contatoCadastrado;
-
     }
 
 
