@@ -5,6 +5,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.Button;
@@ -18,9 +20,12 @@ import com.droid.remoteaccess.feature.HMContato;
 import com.droid.remoteaccess.dbase.Persintencia;
 import com.droid.remoteaccess.R;
 import com.droid.remoteaccess.others.DeviceNameResolver;
+import com.droid.remoteaccess.others.DevicePresence;
 import com.droid.remoteaccess.others.Methods;
 import com.droid.remoteaccess.services.BrokerSyncService;
 import com.droid.remoteaccess.services.RegistrationIntentService;
+
+import java.util.ArrayList;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
@@ -35,6 +40,8 @@ public class DroidListaContatos extends AppCompatActivity {
     private ListView lv_contatos;
     private Persintencia persintencia;
     private ReceiverResponseListaContatos receiver;
+    private Handler presenceRefreshHandler;
+    private Runnable presenceRefreshRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,6 +49,7 @@ public class DroidListaContatos extends AppCompatActivity {
         setContentView(R.layout.telalistacontatos);
 
         context = getBaseContext();
+        presenceRefreshHandler = new Handler(Looper.getMainLooper());
         Methods.AskNotificationPermission(this, getApplicationContext());
         lv_contatos = (ListView) findViewById(R.id.telalistacontatos__lv_contatos);
         lv_contatos.setEmptyView(findViewById(R.id.telalistacontatos_tv_vazio));
@@ -80,27 +88,30 @@ public class DroidListaContatos extends AppCompatActivity {
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(Constantes.RECEIVERRESPONSELISTACONTATOS);
+        filter.addAction(Constantes.RECEIVERPRESENCESTATUS);
         filter.addCategory(Intent.CATEGORY_DEFAULT);
 
         receiver = new ReceiverResponseListaContatos();
         //
         LocalBroadcastManager.getInstance(this).registerReceiver(receiver, filter);
+        startPresenceRefresh();
 
     }
 
     @Override
     protected void onDestroy() {
+        stopPresenceRefresh();
         LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver);
         super.onDestroy();
     }
 
     private void atualizaAdapterContatos() {
 
-        String[] from = {HMContato.DEVICE, HMContato.EMAIL, HMContato.DEVICE_LOOKUP};
-        int[] to = {R.id.celula_tv_device, R.id.celula_tv_email, R.id.celula_btn_identificar};
+        String[] from = {HMContato.DEVICE, HMContato.EMAIL, HMContato.PRESENCE, HMContato.DEVICE_LOOKUP};
+        int[] to = {R.id.celula_tv_device, R.id.celula_tv_email, R.id.celula_tv_presence, R.id.celula_btn_identificar};
 
         SimpleAdapter adapter = new SimpleAdapter(context,
-                persintencia.listaContatos(Methods.getIDDevice(context)),
+                listaContatosComPresenca(),
                 R.layout.celula,
                 from,
                 to);
@@ -112,6 +123,18 @@ public class DroidListaContatos extends AppCompatActivity {
                     String email = textRepresentation == null ? "" : textRepresentation.trim();
                     emailView.setVisibility(email.isEmpty() ? View.GONE : View.VISIBLE);
                     emailView.setText(email);
+                    return true;
+                }
+                if (view.getId() == R.id.celula_tv_presence && view instanceof TextView) {
+                    TextView presenceView = (TextView) view;
+                    PresencePayload payload = PresencePayload.from(textRepresentation);
+                    presenceView.setText(payload.label);
+                    int colorResId = DevicePresence.STATE_ONLINE.equals(payload.state)
+                            ? R.color.presenceOnline
+                            : DevicePresence.STATE_OFFLINE.equals(payload.state)
+                            ? R.color.presenceOffline
+                            : R.color.presenceUnknown;
+                    presenceView.setTextColor(ContextCompat.getColor(DroidListaContatos.this, colorResId));
                     return true;
                 }
                 if (view.getId() == R.id.celula_btn_identificar && view instanceof Button) {
@@ -137,6 +160,35 @@ public class DroidListaContatos extends AppCompatActivity {
             }
         });
         lv_contatos.setAdapter(adapter);
+    }
+
+    private ArrayList<HMContato> listaContatosComPresenca() {
+        ArrayList<HMContato> contatos = persintencia.listaContatos(Methods.getIDDevice(context));
+        for (HMContato item : contatos) {
+            String id = item.get(HMContato.ID);
+            String state = DevicePresence.getStatusState(this, id);
+            String label = DevicePresence.getStatusText(this, id);
+            item.put(HMContato.PRESENCE, state + "|" + label);
+        }
+        return contatos;
+    }
+
+    private void startPresenceRefresh() {
+        presenceRefreshRunnable = new Runnable() {
+            @Override
+            public void run() {
+                atualizaAdapterContatos();
+                presenceRefreshHandler.postDelayed(this, 15000);
+            }
+        };
+        presenceRefreshHandler.postDelayed(presenceRefreshRunnable, 15000);
+    }
+
+    private void stopPresenceRefresh() {
+        if (presenceRefreshHandler != null && presenceRefreshRunnable != null) {
+            presenceRefreshHandler.removeCallbacks(presenceRefreshRunnable);
+            presenceRefreshRunnable = null;
+        }
     }
 
     private void identificarNomeAparelho(final String idContato, final String deviceRaw, final Button button) {
@@ -197,14 +249,39 @@ public class DroidListaContatos extends AppCompatActivity {
         }
     }
 
+    private static class PresencePayload {
+        private final String state;
+        private final String label;
+
+        private PresencePayload(String state, String label) {
+            this.state = state == null ? DevicePresence.STATE_UNKNOWN : state;
+            this.label = label == null ? "" : label;
+        }
+
+        private static PresencePayload from(String payload) {
+            if (payload == null) {
+                return new PresencePayload(DevicePresence.STATE_UNKNOWN, "");
+            }
+            int separator = payload.indexOf('|');
+            if (separator < 0) {
+                return new PresencePayload(DevicePresence.STATE_UNKNOWN, payload);
+            }
+            return new PresencePayload(payload.substring(0, separator), payload.substring(separator + 1));
+        }
+    }
+
 
     public class ReceiverResponseListaContatos extends BroadcastReceiver
     {
 
         @Override
         public void onReceive(Context context, Intent intent) {
+            if (Constantes.RECEIVERPRESENCESTATUS.equals(intent.getAction())) {
+                atualizaAdapterContatos();
+                return;
+            }
             String message = intent.getStringExtra(Constantes.MESSAGE);
-            if (message.contentEquals("refresh"))
+            if ("refresh".equals(message))
             {
                 atualizaAdapterContatos();
             }

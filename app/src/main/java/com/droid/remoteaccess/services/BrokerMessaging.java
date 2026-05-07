@@ -46,6 +46,18 @@ public final class BrokerMessaging {
         publish(GLOBAL_TOPIC, data);
     }
 
+    public static void publishPresence(Context context, boolean screenOn) throws Exception {
+        JSONObject data = new JSONObject();
+        data.put(Constantes.MESSAGE, Constantes.MESSAGE_PRESENCE);
+        data.put(Constantes.ID_FROM, Methods.getIDDevice(context));
+        data.put(Constantes.EMAIL_FROM, Methods.getEmail(context));
+        data.put(Constantes.TOKEN_FROM, getDeviceTopic(context));
+        data.put(Constantes.DEVICE_FROM, Methods.getNameDevice(context));
+        data.put(Constantes.PRESENCE_SCREEN_ON, screenOn ? "1" : "0");
+        data.put(Constantes.PRESENCE_TIME, String.valueOf(System.currentTimeMillis()));
+        publish(GLOBAL_TOPIC, data);
+    }
+
     public static void publishToToken(String token, Bundle data) throws Exception {
         if (token == null || token.isEmpty()) {
             return;

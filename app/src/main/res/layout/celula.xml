@@ -4,7 +4,7 @@
     android:layout_height="wrap_content"
     android:background="@drawable/bg_contact_card"
     android:gravity="center_vertical"
-    android:minHeight="76dp"
+    android:minHeight="88dp"
     android:orientation="horizontal"
     android:paddingLeft="16dp"
     android:paddingTop="14dp"
@@ -52,6 +52,18 @@
             android:text="Identificador"
             android:textColor="@color/textSecondaryDark"
             android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/celula_tv_presence"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
+            android:ellipsize="end"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:text="@string/device_presence_unknown"
+            android:textColor="@color/presenceUnknown"
+            android:textSize="12sp" />
 
     </LinearLayout>
 

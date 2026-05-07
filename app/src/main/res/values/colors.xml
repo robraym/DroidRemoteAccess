@@ -10,5 +10,11 @@
     <color name="textSecondaryDark">#A8B3C1</color>
     <color name="uniwireBlue">#2F8CFF</color>
     <color name="uniwireGreen">#31D08A</color>
+    <color name="statusWaiting">#64B5F6</color>
+    <color name="statusSuccess">#6EE7A8</color>
+    <color name="statusError">#FF8A80</color>
+    <color name="presenceOnline">#6EE7A8</color>
+    <color name="presenceOffline">#8B96A5</color>
+    <color name="presenceUnknown">#A8B3C1</color>
 
 </resources>

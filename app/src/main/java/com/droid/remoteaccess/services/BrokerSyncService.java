@@ -1,9 +1,15 @@
 package com.droid.remoteaccess.services;
 
+import android.Manifest;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.app.Service;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
+import android.content.pm.ServiceInfo;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Bundle;
@@ -15,6 +21,7 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
 import com.droid.remoteaccess.R;
+import com.droid.remoteaccess.others.DevicePresence;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -29,13 +36,17 @@ public class BrokerSyncService extends Service {
 
     private volatile boolean running;
     private Thread worker;
+    private Thread presenceWorker;
     private HttpURLConnection currentConnection;
+    private BroadcastReceiver screenStateReceiver;
 
     @Override
     public void onCreate() {
         super.onCreate();
-        startForeground(NOTIFICATION_ID, createNotification());
+        startForegroundCompat();
         running = true;
+        registerScreenStateReceiver();
+        startPresenceWorker();
         worker = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -65,6 +76,10 @@ public class BrokerSyncService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        startForegroundCompat();
+        running = true;
+        registerScreenStateReceiver();
+        startPresenceWorker();
         if (worker == null || !worker.isAlive()) {
             running = true;
             worker = new Thread(new Runnable() {
@@ -78,6 +93,69 @@ public class BrokerSyncService extends Service {
         return START_STICKY;
     }
 
+    private void registerScreenStateReceiver() {
+        if (screenStateReceiver != null) {
+            return;
+        }
+        screenStateReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                DevicePresence.publishCurrentAsync(getApplicationContext());
+            }
+        };
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_SCREEN_ON);
+        filter.addAction(Intent.ACTION_SCREEN_OFF);
+        filter.addAction(Intent.ACTION_USER_PRESENT);
+        registerReceiver(screenStateReceiver, filter);
+    }
+
+    private void startPresenceWorker() {
+        if (presenceWorker != null && presenceWorker.isAlive()) {
+            return;
+        }
+        presenceWorker = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                while (running) {
+                    try {
+                        DevicePresence.publishCurrent(getApplicationContext());
+                    } catch (Exception ex) {
+                        Log.d(TAG, "Falha ao publicar presença", ex);
+                    }
+                    sleep(DevicePresence.HEARTBEAT_INTERVAL_MS);
+                }
+            }
+        }, "DevicePresenceHeartbeat");
+        presenceWorker.start();
+    }
+
+    private void startForegroundCompat() {
+        android.app.Notification notification = createNotification();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            int serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
+            if (hasLocationPermission()) {
+                serviceType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+            }
+            try {
+                startForeground(NOTIFICATION_ID, notification, serviceType);
+            } catch (SecurityException ex) {
+                Log.w(TAG, "Location foreground type not available, using data sync only", ex);
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            }
+            return;
+        }
+        startForeground(NOTIFICATION_ID, notification);
+    }
+
+    private boolean hasLocationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true;
+        }
+        return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
     @Override
     public void onDestroy() {
         running = false;
@@ -86,6 +164,16 @@ public class BrokerSyncService extends Service {
         }
         if (worker != null) {
             worker.interrupt();
+        }
+        if (presenceWorker != null) {
+            presenceWorker.interrupt();
+        }
+        if (screenStateReceiver != null) {
+            try {
+                unregisterReceiver(screenStateReceiver);
+            } catch (Exception ignored) {
+            }
+            screenStateReceiver = null;
         }
         super.onDestroy();
     }

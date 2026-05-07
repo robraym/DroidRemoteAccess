@@ -18,12 +18,15 @@ import com.droid.remoteaccess.feature.Constantes;
 import com.droid.remoteaccess.feature.Contato;
 import com.droid.remoteaccess.dbase.Persintencia;
 import com.droid.remoteaccess.R;
+import com.droid.remoteaccess.others.DevicePresence;
 import com.droid.remoteaccess.others.Methods;
 import com.droid.remoteaccess.services.BrokerSyncService;
 import com.droid.remoteaccess.services.FileTransferHelper;
 import com.droid.remoteaccess.services.RegistrationIntentService;
 
 import java.io.File;
+import java.util.HashSet;
+import java.util.Set;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
@@ -35,10 +38,12 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 public class DroidControleRemoto extends AppCompatActivity {
 
     private static final long RESPONSE_TIMEOUT_MS = 30000;
+    private static final long LOCATION_RESPONSE_TIMEOUT_MS = 15000;
     private static final long MEDIA_RESPONSE_TIMEOUT_MS = 75000;
 
     private Context context;
     private TextView tv_controlando;
+    private TextView tv_presence;
     private TextView tv_status;
     private TextView tv_latitude;
     private TextView tv_longitude;
@@ -51,6 +56,7 @@ public class DroidControleRemoto extends AppCompatActivity {
     private Button btn_gravar_audio_15;
     private Button btn_mensagens;
     private Button btn_localizacao;
+    private Button btn_cancelar_comando;
 
     private Persintencia persintencia;
     private Contato contato;
@@ -60,8 +66,12 @@ public class DroidControleRemoto extends AppCompatActivity {
     private ReceiverResponseControleRemoto receiver;
     private Handler responseTimeoutHandler;
     private Runnable responseTimeoutRunnable;
+    private Runnable responseCountdownRunnable;
+    private Runnable presenceRefreshRunnable;
     private Button pendingButton;
     private CharSequence pendingButtonOriginalText;
+    private String pendingCommandId;
+    private final Set<String> canceledCommandIds = new HashSet<>();
 
     public DroidControleRemoto() {
     }
@@ -74,6 +84,7 @@ public class DroidControleRemoto extends AppCompatActivity {
         context = getBaseContext();
         Methods.AskNotificationPermission(this, getApplicationContext());
         tv_controlando = (TextView) findViewById(R.id.telacontroleremoto_tv_controlando);
+        tv_presence = (TextView) findViewById(R.id.telacontroleremoto_tv_presence);
         tv_status = (TextView) findViewById(R.id.telacontroleremoto_tv_status);
         tv_latitude = (TextView) findViewById(R.id.telacontroleremoto_tv_latitude);
         tv_longitude = (TextView) findViewById(R.id.telacontroleremoto_tv_Longitude);
@@ -94,6 +105,7 @@ public class DroidControleRemoto extends AppCompatActivity {
             token = "";
             tv_controlando.setText(R.string.remote_unknown_device);
         }
+        updateRemotePresence();
         ContextCompat.startForegroundService(this, new Intent(this, BrokerSyncService.class));
 
         btn_gravar_video_frontal = (Button) findViewById(R.id.btn_gravar_video_frontal);
@@ -168,19 +180,31 @@ public class DroidControleRemoto extends AppCompatActivity {
             }
         });
 
+        btn_cancelar_comando = (Button) findViewById(R.id.btn_cancelar_comando);
+        btn_cancelar_comando.setVisibility(View.GONE);
+        btn_cancelar_comando.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                cancelPendingCommand();
+            }
+        });
+
         IntentFilter filter = new IntentFilter();
         filter.addAction(Constantes.RECEIVERRESPONSECONTROLEREMOTO);
+        filter.addAction(Constantes.RECEIVERPRESENCESTATUS);
         filter.addCategory(Intent.CATEGORY_DEFAULT);
         //
         receiver = new ReceiverResponseControleRemoto();
         //
         LocalBroadcastManager.getInstance(this).registerReceiver(receiver, filter);
+        startPresenceRefresh();
 
     }
 
     @Override
     protected void onDestroy() {
         cancelResponseTimeout();
+        stopPresenceRefresh();
         LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver);
         super.onDestroy();
     }
@@ -201,12 +225,14 @@ public class DroidControleRemoto extends AppCompatActivity {
         }
 
         try {
+            String commandId = createCommandId();
             Intent intent = new Intent(DroidControleRemoto.this, RegistrationIntentService.class);
             intent.putExtra(Constantes.ID_FROM, idFrom);
             intent.putExtra(Constantes.ID_TO, idTo);
+            intent.putExtra(Constantes.COMMAND_ID, commandId);
             intent.putExtra(Constantes.MESSAGE, message);
             startService(intent);
-            markButtonWaiting(message, btn);
+            markButtonWaiting(message, btn, commandId);
             scheduleResponseTimeout(message, btn);
         } catch (Exception e) {
             restoreButton(btn);
@@ -215,13 +241,33 @@ public class DroidControleRemoto extends AppCompatActivity {
 
     }
 
-    private void markButtonWaiting(String message, Button btn) {
+    private String createCommandId() {
+        return Methods.getIDDevice(getApplicationContext()) + "_" + System.currentTimeMillis();
+    }
+
+    private void markButtonWaiting(String message, Button btn, String commandId) {
         pendingButton = btn;
         pendingButtonOriginalText = btn.getText();
+        pendingCommandId = commandId;
         btn.setSelected(true);
         btn.setEnabled(false);
         btn.setText(getWaitingButtonText(message));
-        setStatus(R.string.remote_status_waiting);
+        setCancelCommandVisible(true);
+        setWaitingStatus(getCountdownSeconds(getResponseTimeoutMs(message)));
+    }
+
+    private void cancelPendingCommand() {
+        if (pendingButton == null) {
+            return;
+        }
+        String canceledCommandId = pendingCommandId;
+        Button canceledButton = pendingButton;
+        cancelResponseTimeout();
+        if (canceledCommandId != null && !canceledCommandId.isEmpty()) {
+            canceledCommandIds.add(canceledCommandId);
+        }
+        restoreButton(canceledButton);
+        setErrorStatus(R.string.remote_status_cancelled, R.string.remote_status_cancelled_detail);
     }
 
     private String getWaitingButtonText(String message) {
@@ -319,95 +365,193 @@ public class DroidControleRemoto extends AppCompatActivity {
             btn.setText(pendingButtonOriginalText);
             pendingButton = null;
             pendingButtonOriginalText = null;
+            pendingCommandId = null;
+            setCancelCommandVisible(false);
         }
     }
 
-    private void setStatus(int stringResId) {
-        if (tv_status != null) {
-            tv_status.setText(stringResId);
+    private void setCancelCommandVisible(boolean visible) {
+        if (btn_cancelar_comando != null) {
+            btn_cancelar_comando.setVisibility(visible ? View.VISIBLE : View.GONE);
         }
+    }
+
+    private void setStatusText(String status) {
+        if (tv_status != null) {
+            tv_status.setText(status);
+        }
+    }
+
+    private void setStatusColor(int colorResId) {
+        if (tv_status != null) {
+            tv_status.setTextColor(ContextCompat.getColor(this, colorResId));
+        }
+    }
+
+    private void updateRemotePresence() {
+        if (tv_presence == null || idTo == null || idTo.isEmpty()) {
+            return;
+        }
+        tv_presence.setText(DevicePresence.getStatusText(this, idTo));
+        tv_presence.setTextColor(ContextCompat.getColor(this,
+                DevicePresence.getStatusColorResId(this, idTo)));
+    }
+
+    private void startPresenceRefresh() {
+        presenceRefreshRunnable = new Runnable() {
+            @Override
+            public void run() {
+                updateRemotePresence();
+                responseTimeoutHandler.postDelayed(this, 15000);
+            }
+        };
+        responseTimeoutHandler.postDelayed(presenceRefreshRunnable, 15000);
+    }
+
+    private void stopPresenceRefresh() {
+        if (responseTimeoutHandler != null && presenceRefreshRunnable != null) {
+            responseTimeoutHandler.removeCallbacks(presenceRefreshRunnable);
+            presenceRefreshRunnable = null;
+        }
+    }
+
+    private void setWaitingStatus(int remainingSeconds) {
+        setStatusColor(R.color.statusWaiting);
+        setStatusText(getString(R.string.remote_status_sent)
+                + "\n"
+                + getString(R.string.remote_status_waiting_countdown, remainingSeconds));
+    }
+
+    private void setSuccessStatus(int stringResId) {
+        setStatusColor(R.color.statusSuccess);
+        setStatusText(getString(R.string.remote_status_answered)
+                + "\n"
+                + getString(stringResId));
+    }
+
+    private void setErrorStatus(int titleResId, int detailResId) {
+        setStatusColor(R.color.statusError);
+        setStatusText(getString(titleResId)
+                + "\n"
+                + getString(detailResId));
     }
 
     private void updateStatusForResponse(String message) {
         if (message.contentEquals("r:vr:ready")) {
-            setStatus(R.string.remote_status_video_ready);
+            setSuccessStatus(R.string.remote_status_video_ready);
         } else if (message.contentEquals("r:vr:recording") || message.contentEquals("r:vr")) {
-            setStatus(R.string.remote_status_recording);
+            setSuccessStatus(R.string.remote_status_recording);
         } else if (message.startsWith("r:vr") && message.endsWith(":error")) {
-            setStatus(R.string.remote_status_video_error);
+            setErrorStatus(R.string.remote_status_answered, R.string.remote_status_video_error);
         } else if (message.contentEquals("r:vs:stopped") || message.contentEquals("r:vs")) {
-            setStatus(R.string.remote_status_stopped);
+            setSuccessStatus(R.string.remote_status_stopped);
         } else if (message.contentEquals("r:vs:idle")) {
-            setStatus(R.string.remote_video_recording_idle);
+            setErrorStatus(R.string.remote_status_answered, R.string.remote_video_recording_idle);
         } else if (message.contentEquals("r:uv:error")) {
-            setStatus(R.string.remote_status_video_error);
+            setErrorStatus(R.string.remote_status_answered, R.string.remote_status_video_error);
         } else if (message.contentEquals("r:uv:sent")) {
-            setStatus(R.string.remote_video_transfer_waiting);
+            setSuccessStatus(R.string.remote_video_transfer_waiting);
         } else if (message.contentEquals("r:uv")) {
-            setStatus(R.string.remote_status_video_received);
+            setSuccessStatus(R.string.remote_status_video_received);
         } else if (message.contentEquals("r:pr:taken") || message.contentEquals("r:pr")) {
-            setStatus(R.string.remote_status_photo_taken);
+            setSuccessStatus(R.string.remote_status_photo_taken);
         } else if (message.contentEquals("r:pr:error")) {
-            setStatus(R.string.remote_status_photo_error);
+            setErrorStatus(R.string.remote_status_answered, R.string.remote_status_photo_error);
         } else if (message.contentEquals("r:up:error")) {
-            setStatus(R.string.remote_status_photo_error);
+            setErrorStatus(R.string.remote_status_answered, R.string.remote_status_photo_error);
         } else if (message.contentEquals("r:up:sent")) {
-            setStatus(R.string.remote_photo_transfer_waiting);
+            setSuccessStatus(R.string.remote_photo_transfer_waiting);
         } else if (message.contentEquals("r:up")) {
-            setStatus(R.string.remote_status_photo_received);
+            setSuccessStatus(R.string.remote_status_photo_received);
         } else if (message.contentEquals("r:ar:ready")) {
-            setStatus(R.string.remote_status_audio_ready);
+            setSuccessStatus(R.string.remote_status_audio_ready);
         } else if (message.contentEquals("r:ar:recording") || message.contentEquals("r:ar")) {
-            setStatus(R.string.remote_status_recording);
+            setSuccessStatus(R.string.remote_status_recording);
         } else if (message.startsWith("r:ar") && message.endsWith(":error")) {
-            setStatus(R.string.remote_status_audio_error);
+            setErrorStatus(R.string.remote_status_answered, R.string.remote_status_audio_error);
         } else if (message.contentEquals("r:as:stopped") || message.contentEquals("r:as")) {
-            setStatus(R.string.remote_status_stopped);
+            setSuccessStatus(R.string.remote_status_stopped);
         } else if (message.contentEquals("r:as:idle")) {
-            setStatus(R.string.remote_status_audio_idle);
+            setErrorStatus(R.string.remote_status_answered, R.string.remote_status_audio_idle);
         } else if (message.contentEquals("r:ua:error")) {
-            setStatus(R.string.remote_status_audio_error);
+            setErrorStatus(R.string.remote_status_answered, R.string.remote_status_audio_error);
         } else if (message.contentEquals("r:ua:sent")) {
-            setStatus(R.string.remote_audio_transfer_waiting);
+            setSuccessStatus(R.string.remote_audio_transfer_waiting);
         } else if (message.contentEquals("r:ua")) {
-            setStatus(R.string.remote_status_audio_received);
+            setSuccessStatus(R.string.remote_status_audio_received);
         } else if (message.contentEquals("r:um:error")) {
-            setStatus(R.string.remote_status_messages_error);
+            setErrorStatus(R.string.remote_status_answered, R.string.remote_status_messages_error);
         } else if (message.contentEquals("r:um:sent")) {
-            setStatus(R.string.remote_messages_transfer_waiting);
+            setSuccessStatus(R.string.remote_messages_transfer_waiting);
         } else if (message.contentEquals("r:um")) {
-            setStatus(R.string.remote_status_messages_received);
+            setSuccessStatus(R.string.remote_status_messages_received);
         } else if (message.contentEquals("r:l")) {
-            setStatus(R.string.remote_status_location_received);
+            setSuccessStatus(R.string.remote_status_location_received);
+        } else if (message.startsWith("r:l") && message.endsWith(":error")) {
+            setErrorStatus(R.string.remote_status_answered, R.string.remote_status_location_error);
         } else {
-            setStatus(R.string.remote_status_ready);
+            setSuccessStatus(R.string.remote_status_ready);
         }
     }
 
     private void scheduleResponseTimeout(String message, final Button btn) {
         cancelResponseTimeout();
+        long timeoutMs = getResponseTimeoutMs(message);
+        startResponseCountdown(timeoutMs);
         responseTimeoutRunnable = new Runnable() {
             @Override
             public void run() {
+                responseTimeoutRunnable = null;
+                responseCountdownRunnable = null;
                 restoreButton(btn);
-                setStatus(R.string.remote_status_timeout);
+                setErrorStatus(R.string.remote_status_no_response, R.string.remote_command_timeout);
                 Toast.makeText(DroidControleRemoto.this, R.string.remote_command_timeout, Toast.LENGTH_SHORT).show();
             }
         };
-        responseTimeoutHandler.postDelayed(responseTimeoutRunnable, getResponseTimeoutMs(message));
+        responseTimeoutHandler.postDelayed(responseTimeoutRunnable, timeoutMs);
     }
 
     private long getResponseTimeoutMs(String message) {
         if (message != null && (message.startsWith("v") || message.startsWith("p") || message.startsWith("a"))) {
             return MEDIA_RESPONSE_TIMEOUT_MS;
         }
+        if (message != null && message.equalsIgnoreCase("l")) {
+            return LOCATION_RESPONSE_TIMEOUT_MS;
+        }
         return RESPONSE_TIMEOUT_MS;
+    }
+
+    private int getCountdownSeconds(long timeoutMs) {
+        return Math.max(1, (int) Math.ceil(timeoutMs / 1000.0));
+    }
+
+    private void startResponseCountdown(long timeoutMs) {
+        final long deadlineMs = System.currentTimeMillis() + timeoutMs;
+        responseCountdownRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (responseCountdownRunnable != this) {
+                    return;
+                }
+                long remainingMs = deadlineMs - System.currentTimeMillis();
+                if (remainingMs <= 0) {
+                    return;
+                }
+                setWaitingStatus(getCountdownSeconds(remainingMs));
+                responseTimeoutHandler.postDelayed(this, 1000);
+            }
+        };
+        responseCountdownRunnable.run();
     }
 
     private void cancelResponseTimeout() {
         if (responseTimeoutHandler != null && responseTimeoutRunnable != null) {
             responseTimeoutHandler.removeCallbacks(responseTimeoutRunnable);
             responseTimeoutRunnable = null;
+        }
+        if (responseTimeoutHandler != null && responseCountdownRunnable != null) {
+            responseTimeoutHandler.removeCallbacks(responseCountdownRunnable);
+            responseCountdownRunnable = null;
         }
     }
 
@@ -416,13 +560,29 @@ public class DroidControleRemoto extends AppCompatActivity {
 
         @Override
         public void onReceive(Context context, Intent intent) {
+            if (Constantes.RECEIVERPRESENCESTATUS.equals(intent.getAction())) {
+                String deviceId = intent.getStringExtra(Constantes.ID_FROM);
+                if (deviceId == null || deviceId.equals(idTo)) {
+                    updateRemotePresence();
+                }
+                return;
+            }
             String message = intent.getStringExtra(Constantes.MESSAGE);
             if (message == null || message.isEmpty()) {
                 return;
             }
+            String commandId = intent.getStringExtra(Constantes.COMMAND_ID);
+            if (shouldIgnoreResponse(commandId)) {
+                return;
+            }
             cancelResponseTimeout();
-            if (message.contentEquals("r:l"))
+            if (message.startsWith("r:l"))
             {
+                if (message.endsWith(":error")) {
+                    Toast.makeText(DroidControleRemoto.this, R.string.remote_location_not_available, Toast.LENGTH_LONG).show();
+                    EnabledButton(message);
+                    return;
+                }
                 //tv_latitude.setText(String.valueOf(intent.getDoubleExtra(Constantes.LATITUDE, 0.0)));
                 //tv_longitude.setText(String.valueOf(intent.getDoubleExtra(Constantes.LONGITUDE, 0.0)));
 
@@ -431,8 +591,8 @@ public class DroidControleRemoto extends AppCompatActivity {
                 tv_latitude.setText(latitude);
                 tv_longitude.setText(longitude);
 
-                if (latitude == null || longitude == null || latitude.isEmpty() || longitude.isEmpty()) {
-                    Toast.makeText(DroidControleRemoto.this, R.string.remote_location_open_error, Toast.LENGTH_SHORT).show();
+                if (!isValidLocation(latitude, longitude)) {
+                    Toast.makeText(DroidControleRemoto.this, R.string.remote_location_not_available, Toast.LENGTH_LONG).show();
                     EnabledButton(message);
                     return;
                 }
@@ -544,6 +704,29 @@ public class DroidControleRemoto extends AppCompatActivity {
             }
             EnabledButton(message);
 
+        }
+    }
+
+    private boolean shouldIgnoreResponse(String commandId) {
+        if (commandId == null || commandId.isEmpty()) {
+            return false;
+        }
+        if (canceledCommandIds.contains(commandId)) {
+            return true;
+        }
+        return pendingCommandId != null && !commandId.equals(pendingCommandId);
+    }
+
+    private boolean isValidLocation(String latitude, String longitude) {
+        if (latitude == null || longitude == null || latitude.isEmpty() || longitude.isEmpty()) {
+            return false;
+        }
+        try {
+            double lat = Double.parseDouble(latitude.replace(",", ".").trim());
+            double lon = Double.parseDouble(longitude.replace(",", ".").trim());
+            return lat != 0.0 || lon != 0.0;
+        } catch (Exception ex) {
+            return false;
         }
     }
 

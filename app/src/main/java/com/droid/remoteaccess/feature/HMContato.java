@@ -12,6 +12,7 @@ public class HMContato extends HashMap<String,String> {
     public static final String DEVICE = "device";
     public static final String DEVICE_RAW = "device_raw";
     public static final String DEVICE_LOOKUP = "device_lookup";
+    public static final String PRESENCE = "presence";
 
 
     @Override

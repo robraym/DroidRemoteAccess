@@ -50,6 +50,7 @@ public class RegistrationIntentService extends IntentService {
             String id_from = intent.getStringExtra(Constantes.ID_FROM);
             String id_to = intent.getStringExtra(Constantes.ID_TO);
             String message = intent.getStringExtra("message");
+            String commandId = intent.getStringExtra(Constantes.COMMAND_ID);
 
             String token = "";
 
@@ -101,7 +102,10 @@ public class RegistrationIntentService extends IntentService {
                 data.putString(Constantes.REPLY_TOKEN, replyToken);
                 data.putString(Constantes.DEVICE_FROM, Methods.getNameDevice(context));
                 data.putString(Constantes.DEVICE_TO, deviceTo);
-                data.putString(Constantes.COMMAND_ID, senderId + "_" + System.currentTimeMillis());
+                if (commandId == null || commandId.isEmpty()) {
+                    commandId = senderId + "_" + System.currentTimeMillis();
+                }
+                data.putString(Constantes.COMMAND_ID, commandId);
                 data.putString(Constantes.MESSAGE, message);
                 BrokerMessaging.publishCommand(token, data);
                 Log.i(TAG, "Command sent: " + message);

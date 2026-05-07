@@ -11,6 +11,9 @@
     <string name="contacts_available_devices">Disponíveis agora</string>
     <string name="contacts_empty_message">Abra o app em outro aparelho para ele aparecer aqui.</string>
     <string name="contact_icon_text">RA</string>
+    <string name="device_presence_online_now">Online agora</string>
+    <string name="device_presence_offline">Offline / tela apagada</string>
+    <string name="device_presence_unknown">Status desconhecido</string>
     <string name="contact_identify_device">Identificar</string>
     <string name="contact_identifying_device">Buscando...</string>
     <string name="contact_identified_device">Nome atualizado: %1$s</string>
@@ -41,6 +44,7 @@
     <string name="remote_latitude">Latitude</string>
     <string name="remote_longitude">Longitude</string>
     <string name="remote_waiting_location">Aguardando</string>
+    <string name="remote_location_not_available">Não foi possível obter a localização do aparelho remoto agora.</string>
     <string name="remote_command_timeout">Não houve resposta do aparelho. Tente novamente.</string>
     <string name="remote_location_open_error">Não foi possível abrir a localização recebida.</string>
     <string name="remote_audio_received">Áudio recebido em: %1$s</string>
@@ -107,8 +111,16 @@
     <string name="remote_button_taking_photo">Tirando...</string>
     <string name="remote_button_sending">Enviando...</string>
     <string name="remote_button_locating">Localizando...</string>
+    <string name="remote_cancel_command">Cancelar</string>
+    <string name="remote_status_label">Status</string>
     <string name="remote_status_ready">Pronto para enviar comandos.</string>
-    <string name="remote_status_waiting">Comando enviado. Aguardando confirmação...</string>
+    <string name="remote_status_sent">Comando enviado</string>
+    <string name="remote_status_waiting_countdown">Aguardando resposta: %1$ds</string>
+    <string name="remote_status_answered">Respondido</string>
+    <string name="remote_status_cancelled">Comando cancelado</string>
+    <string name="remote_status_cancelled_detail">Você já pode enviar outro comando.</string>
+    <string name="remote_status_no_response">Sem resposta</string>
+    <string name="remote_status_waiting">Comando enviado\nAguardando confirmação...</string>
     <string name="remote_status_recording">Gravando no aparelho remoto.</string>
     <string name="remote_status_video_ready">Vídeo pronto. Toque em Enviar.</string>
     <string name="remote_status_stopped">Gravação parada.</string>
@@ -124,6 +136,7 @@
     <string name="remote_status_messages_error">Falha ao receber mensagens.</string>
     <string name="remote_status_messages_received">Mensagens recebidas.</string>
     <string name="remote_status_location_received">Localização recebida.</string>
+    <string name="remote_status_location_error">Falha ao obter localização.</string>
     <string name="remote_status_timeout">Sem resposta do aparelho remoto.</string>
 
     <string name="txt_titulo">Settings</string>

@@ -16,6 +16,9 @@ public class Constantes {
     public static final String DEVICE_TO = "device_to";
     public static final String COMMAND_ID = "command_id";
     public static final String MESSAGE = "message";
+    public static final String MESSAGE_PRESENCE = "presence";
+    public static final String PRESENCE_SCREEN_ON = "presence_screen_on";
+    public static final String PRESENCE_TIME = "presence_time";
     public static final String FILE_TRANSFER_AUDIO = "file:audio";
     public static final String FILE_TRANSFER_VIDEO = "file:video";
     public static final String FILE_TRANSFER_VIDEO_CHUNK = "file:video_chunk";
@@ -38,6 +41,7 @@ public class Constantes {
     public static final String REGISTRATION_COMPLETE = "registrationComplete";
     public static final String RECEIVERRESPONSELISTACONTATOS = "receiverResponseListaContatos";
     public static final String RECEIVERRESPONSECONTROLEREMOTO = "receiverResponseControleRemoto";
+    public static final String RECEIVERPRESENCESTATUS = "receiverPresenceStatus";
     public static final String LATITUDE = "latitude";
     public static final String LONGITUDE = "longitude";
 
