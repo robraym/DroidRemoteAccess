@@ -7,6 +7,7 @@ import android.content.IntentFilter;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.Button;
@@ -22,10 +23,13 @@ import com.droid.remoteaccess.R;
 import com.droid.remoteaccess.others.DeviceNameResolver;
 import com.droid.remoteaccess.others.DevicePresence;
 import com.droid.remoteaccess.others.Methods;
+import com.droid.remoteaccess.services.BrokerMessaging;
 import com.droid.remoteaccess.services.BrokerSyncService;
+import com.droid.remoteaccess.services.LocalDiscovery;
 import com.droid.remoteaccess.services.RegistrationIntentService;
 
 import java.util.ArrayList;
+import java.util.Locale;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
@@ -36,12 +40,17 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
  */
 public class DroidListaContatos extends AppCompatActivity {
 
+    private static final String TAG = "DroidListaContatos";
+    private static final long DISCOVERY_REQUEST_INTERVAL_MS = 30000;
+
     private Context context;
     private ListView lv_contatos;
     private Persintencia persintencia;
     private ReceiverResponseListaContatos receiver;
     private Handler presenceRefreshHandler;
     private Runnable presenceRefreshRunnable;
+    private long lastDiscoveryRequestAt;
+    private volatile boolean discoveryRequestInFlight;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -94,8 +103,18 @@ public class DroidListaContatos extends AppCompatActivity {
         receiver = new ReceiverResponseListaContatos();
         //
         LocalBroadcastManager.getInstance(this).registerReceiver(receiver, filter);
+        requestDeviceDiscovery(true);
+        scheduleInitialDiscoveryRetry(5000);
+        scheduleInitialDiscoveryRetry(15000);
         startPresenceRefresh();
 
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        requestDeviceDiscovery(false);
+        atualizaAdapterContatos();
     }
 
     @Override
@@ -107,8 +126,8 @@ public class DroidListaContatos extends AppCompatActivity {
 
     private void atualizaAdapterContatos() {
 
-        String[] from = {HMContato.DEVICE, HMContato.EMAIL, HMContato.PRESENCE, HMContato.DEVICE_LOOKUP};
-        int[] to = {R.id.celula_tv_device, R.id.celula_tv_email, R.id.celula_tv_presence, R.id.celula_btn_identificar};
+        String[] from = {HMContato.AVATAR, HMContato.DEVICE, HMContato.EMAIL, HMContato.PRESENCE, HMContato.DEVICE_LOOKUP};
+        int[] to = {R.id.celula_tv_icon, R.id.celula_tv_device, R.id.celula_tv_email, R.id.celula_tv_presence, R.id.celula_btn_identificar};
 
         SimpleAdapter adapter = new SimpleAdapter(context,
                 listaContatosComPresenca(),
@@ -118,6 +137,13 @@ public class DroidListaContatos extends AppCompatActivity {
         adapter.setViewBinder(new SimpleAdapter.ViewBinder() {
             @Override
             public boolean setViewValue(View view, Object data, String textRepresentation) {
+                if (view.getId() == R.id.celula_tv_icon && view instanceof TextView) {
+                    TextView iconView = (TextView) view;
+                    String avatar = textRepresentation == null ? "" : textRepresentation.trim();
+                    iconView.setText(avatar.isEmpty() ? "AN" : avatar);
+                    iconView.setTextSize(avatar.length() > 3 ? 11 : 12);
+                    return true;
+                }
                 if (view.getId() == R.id.celula_tv_email && view instanceof TextView) {
                     TextView emailView = (TextView) view;
                     String email = textRepresentation == null ? "" : textRepresentation.trim();
@@ -164,24 +190,138 @@ public class DroidListaContatos extends AppCompatActivity {
 
     private ArrayList<HMContato> listaContatosComPresenca() {
         ArrayList<HMContato> contatos = persintencia.listaContatos(Methods.getIDDevice(context));
+        ArrayList<HMContato> contatosVisiveis = new ArrayList<>();
         for (HMContato item : contatos) {
             String id = item.get(HMContato.ID);
             String state = DevicePresence.getStatusState(this, id);
             String label = DevicePresence.getStatusText(this, id);
             item.put(HMContato.PRESENCE, state + "|" + label);
+            item.put(HMContato.AVATAR, buildDeviceAvatar(item.get(HMContato.DEVICE), item.get(HMContato.DEVICE_RAW)));
+            contatosVisiveis.add(item);
         }
-        return contatos;
+        return contatosVisiveis;
+    }
+
+    private String buildDeviceAvatar(String deviceName, String rawDevice) {
+        String name = firstNotEmpty(deviceName, rawDevice);
+        String normalized = normalizeAvatarSource(name);
+        String galaxyBadge = buildGalaxyBadge(normalized);
+        if (!galaxyBadge.isEmpty()) {
+            return galaxyBadge;
+        }
+
+        String genericBadge = buildGenericBadge(normalized);
+        return genericBadge.isEmpty() ? "AN" : genericBadge;
+    }
+
+    private String firstNotEmpty(String preferred, String fallback) {
+        if (preferred != null && !preferred.trim().isEmpty()) {
+            return preferred;
+        }
+        return fallback == null ? "" : fallback;
+    }
+
+    private String normalizeAvatarSource(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.toUpperCase(Locale.US)
+                .replace("+", " PLUS ")
+                .replaceAll("[^A-Z0-9]+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private String buildGalaxyBadge(String normalized) {
+        if (normalized.isEmpty()) {
+            return "";
+        }
+        String cleaned = normalized
+                .replace("SAMSUNG", "")
+                .replace("GALAXY", "")
+                .trim();
+        String[] tokens = cleaned.split("\\s+");
+
+        for (int i = 0; i < tokens.length; i++) {
+            String token = tokens[i];
+            String next = i + 1 < tokens.length ? tokens[i + 1] : "";
+            if (token.matches("S\\d{1,3}")) {
+                return limitAvatar(token + getVariantSuffix(next));
+            }
+            if (token.matches("NOTE\\d{1,3}")) {
+                return limitAvatar("N" + token.replace("NOTE", "") + getVariantSuffix(next));
+            }
+            if (token.startsWith("FOLD")) {
+                return limitAvatar("ZF" + trailingDigits(token));
+            }
+            if (token.startsWith("FLIP")) {
+                return limitAvatar("ZP" + trailingDigits(token));
+            }
+        }
+        return "";
+    }
+
+    private String getVariantSuffix(String token) {
+        if ("ULTRA".equals(token)) {
+            return "U";
+        }
+        if ("EDGE".equals(token)) {
+            return "E";
+        }
+        if ("PLUS".equals(token)) {
+            return "+";
+        }
+        return "";
+    }
+
+    private String trailingDigits(String value) {
+        return value == null ? "" : value.replaceAll("\\D+", "");
+    }
+
+    private String buildGenericBadge(String normalized) {
+        if (normalized.isEmpty()) {
+            return "";
+        }
+        String[] tokens = normalized.split("\\s+");
+        StringBuilder badge = new StringBuilder();
+        for (String token : tokens) {
+            if (token.isEmpty() || "SAMSUNG".equals(token) || "GALAXY".equals(token)) {
+                continue;
+            }
+            badge.append(token.charAt(0));
+            if (badge.length() >= 2) {
+                break;
+            }
+        }
+        return limitAvatar(badge.toString());
+    }
+
+    private String limitAvatar(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        return value.length() > 4 ? value.substring(0, 4) : value;
     }
 
     private void startPresenceRefresh() {
         presenceRefreshRunnable = new Runnable() {
             @Override
             public void run() {
+                requestDeviceDiscovery(false);
                 atualizaAdapterContatos();
                 presenceRefreshHandler.postDelayed(this, 15000);
             }
         };
         presenceRefreshHandler.postDelayed(presenceRefreshRunnable, 15000);
+    }
+
+    private void scheduleInitialDiscoveryRetry(long delayMs) {
+        presenceRefreshHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                requestDeviceDiscovery(true);
+            }
+        }, delayMs);
     }
 
     private void stopPresenceRefresh() {
@@ -220,6 +360,34 @@ public class DroidListaContatos extends AppCompatActivity {
                 });
             }
         }).start();
+    }
+
+    private void requestDeviceDiscovery(boolean force) {
+        long now = System.currentTimeMillis();
+        if (discoveryRequestInFlight) {
+            return;
+        }
+        if (!force && now - lastDiscoveryRequestAt < DISCOVERY_REQUEST_INTERVAL_MS) {
+            return;
+        }
+        lastDiscoveryRequestAt = now;
+        discoveryRequestInFlight = true;
+        final String requestId = Methods.getIDDevice(getApplicationContext()) + "_discover_" + now;
+        LocalDiscovery.sendDiscoveryRequestAsync(getApplicationContext());
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    BrokerMessaging.publishDiscoveryRequest(getApplicationContext(), requestId);
+                    Log.i(TAG, "Busca de dispositivos enviada: " + requestId);
+                } catch (Exception ex) {
+                    Log.d(TAG, "Falha ao buscar dispositivos online", ex);
+                } finally {
+                    discoveryRequestInFlight = false;
+                }
+            }
+        }, "DeviceDiscoveryRequest").start();
     }
 
     private static class LookupPayload {

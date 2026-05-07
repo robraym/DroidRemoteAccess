@@ -22,9 +22,10 @@ import java.util.List;
 
 public final class BrokerMessaging {
 
-    public static final String GLOBAL_TOPIC = "droidremoteaccess_global_v2";
+    public static final String GLOBAL_TOPIC = "droidremoteaccess_discovery_v2";
     private static final String BASE_URL = "https://ntfy.sh/";
     private static final String TOPIC_PREFIX = "droidremoteaccess_";
+    private static final String INITIAL_STREAM_SINCE = "10m";
 
     private BrokerMessaging() {
     }
@@ -38,11 +39,16 @@ public final class BrokerMessaging {
     }
 
     public static void publishContact(Context context, String id, String email, String token, String device) throws Exception {
+        long now = System.currentTimeMillis();
         JSONObject data = new JSONObject();
         data.put(Constantes.ID_FROM, id);
         data.put(Constantes.EMAIL_FROM, email);
         data.put(Constantes.TOKEN_FROM, token);
         data.put(Constantes.DEVICE_FROM, device);
+        data.put(Constantes.CONTACT_TIME, String.valueOf(now));
+        data.put(Constantes.PRESENCE_SCREEN_ON,
+                com.droid.remoteaccess.others.DevicePresence.isScreenInteractive(context) ? "1" : "0");
+        data.put(Constantes.PRESENCE_TIME, String.valueOf(now));
         publish(GLOBAL_TOPIC, data);
     }
 
@@ -58,6 +64,51 @@ public final class BrokerMessaging {
         publish(GLOBAL_TOPIC, data);
     }
 
+    public static void publishDiscoveryRequest(Context context, String requestId) throws Exception {
+        long now = System.currentTimeMillis();
+        JSONObject data = new JSONObject();
+        data.put(Constantes.MESSAGE, Constantes.MESSAGE_DISCOVERY_REQUEST);
+        data.put(Constantes.ID_FROM, Methods.getIDDevice(context));
+        data.put(Constantes.EMAIL_FROM, Methods.getEmail(context));
+        data.put(Constantes.TOKEN_FROM, getDeviceTopic(context));
+        data.put(Constantes.REPLY_TOKEN, getDeviceTopic(context));
+        data.put(Constantes.DEVICE_FROM, Methods.getNameDevice(context));
+        data.put(Constantes.COMMAND_ID, requestId);
+        data.put(Constantes.CONTACT_TIME, String.valueOf(now));
+        data.put(Constantes.DISCOVERY_TIME, String.valueOf(now));
+        data.put(Constantes.PRESENCE_SCREEN_ON,
+                com.droid.remoteaccess.others.DevicePresence.isScreenInteractive(context) ? "1" : "0");
+        data.put(Constantes.PRESENCE_TIME, String.valueOf(now));
+        publish(GLOBAL_TOPIC, data);
+    }
+
+    public static void publishDiscoveryResponse(Context context, String requesterToken,
+                                                String requesterId, String requestId) throws Exception {
+        if ((requesterToken == null || requesterToken.isEmpty()) && requesterId != null && !requesterId.isEmpty()) {
+            requesterToken = getDeviceTopicForId(requesterId);
+        }
+        if (requesterToken == null || requesterToken.isEmpty()) {
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        Bundle data = new Bundle();
+        data.putString(Constantes.MESSAGE, Constantes.MESSAGE_DISCOVERY_RESPONSE);
+        data.putString(Constantes.ID_FROM, Methods.getIDDevice(context));
+        data.putString(Constantes.ID_TO, requesterId);
+        data.putString(Constantes.EMAIL_FROM, Methods.getEmail(context));
+        data.putString(Constantes.TOKEN_FROM, getDeviceTopic(context));
+        data.putString(Constantes.REPLY_TOKEN, getDeviceTopic(context));
+        data.putString(Constantes.DEVICE_FROM, Methods.getNameDevice(context));
+        data.putString(Constantes.COMMAND_ID, requestId);
+        data.putString(Constantes.CONTACT_TIME, String.valueOf(now));
+        data.putString(Constantes.DISCOVERY_TIME, String.valueOf(now));
+        data.putString(Constantes.PRESENCE_SCREEN_ON,
+                com.droid.remoteaccess.others.DevicePresence.isScreenInteractive(context) ? "1" : "0");
+        data.putString(Constantes.PRESENCE_TIME, String.valueOf(now));
+        publishToToken(requesterToken, data);
+    }
+
     public static void publishToToken(String token, Bundle data) throws Exception {
         if (token == null || token.isEmpty()) {
             return;
@@ -69,6 +120,7 @@ public final class BrokerMessaging {
         Exception firstError = null;
         try {
             publishToToken(token, data);
+            return;
         } catch (Exception ex) {
             firstError = ex;
         }
@@ -170,10 +222,8 @@ public final class BrokerMessaging {
         String topics = sanitizeTopic(GLOBAL_TOPIC) + "," + sanitizeTopic(getDeviceTopic(context));
         StringBuilder urlBuilder = new StringBuilder(BASE_URL)
                 .append(topics)
-                .append("/json");
-        if (since != null && !since.isEmpty()) {
-            urlBuilder.append("?since=").append(URLEncoder.encode(since, "UTF-8"));
-        }
+                .append("/json?since=")
+                .append(URLEncoder.encode((since == null || since.isEmpty()) ? INITIAL_STREAM_SINCE : since, "UTF-8"));
 
         HttpURLConnection conn = (HttpURLConnection) new URL(urlBuilder.toString()).openConnection();
         conn.setRequestMethod("GET");
@@ -192,6 +242,27 @@ public final class BrokerMessaging {
     }
 
     private static void publish(String topic, JSONObject data) throws Exception {
+        Exception lastError = null;
+        long retryDelayMs = 3000L;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                publishOnce(topic, data);
+                return;
+            } catch (IllegalStateException ex) {
+                lastError = ex;
+                if (!ex.getMessage().contains("HTTP 429") || attempt == 2) {
+                    throw ex;
+                }
+                sleep(retryDelayMs);
+                retryDelayMs *= 2L;
+            }
+        }
+        if (lastError != null) {
+            throw lastError;
+        }
+    }
+
+    private static void publishOnce(String topic, JSONObject data) throws Exception {
         byte[] bytes = data.toString().getBytes("UTF-8");
         HttpURLConnection conn = (HttpURLConnection) new URL(BASE_URL + sanitizeTopic(topic)).openConnection();
         conn.setRequestMethod("POST");
@@ -207,6 +278,13 @@ public final class BrokerMessaging {
             throw new IllegalStateException("Broker HTTP " + responseCode);
         }
         conn.disconnect();
+    }
+
+    private static void sleep(long delayMs) {
+        try {
+            Thread.sleep(delayMs);
+        } catch (InterruptedException ignored) {
+        }
     }
 
     private static String sanitizeTopic(String value) {

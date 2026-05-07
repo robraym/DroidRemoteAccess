@@ -188,6 +188,7 @@ public class DroidControleRemoto extends AppCompatActivity {
                 cancelPendingCommand();
             }
         });
+        updateRemotePresence();
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(Constantes.RECEIVERRESPONSECONTROLEREMOTO);
@@ -252,6 +253,7 @@ public class DroidControleRemoto extends AppCompatActivity {
         btn.setSelected(true);
         btn.setEnabled(false);
         btn.setText(getWaitingButtonText(message));
+        setCommandButtonsEnabled(false);
         setCancelCommandVisible(true);
         setWaitingStatus(getCountdownSeconds(getResponseTimeoutMs(message)));
     }
@@ -367,6 +369,8 @@ public class DroidControleRemoto extends AppCompatActivity {
             pendingButtonOriginalText = null;
             pendingCommandId = null;
             setCancelCommandVisible(false);
+            setCommandButtonsEnabled(true);
+            updateRemotePresence();
         }
     }
 
@@ -395,6 +399,27 @@ public class DroidControleRemoto extends AppCompatActivity {
         tv_presence.setText(DevicePresence.getStatusText(this, idTo));
         tv_presence.setTextColor(ContextCompat.getColor(this,
                 DevicePresence.getStatusColorResId(this, idTo)));
+        if (pendingButton == null) {
+            setCommandButtonsEnabled(true);
+        }
+    }
+
+    private void setCommandButtonsEnabled(boolean enabled) {
+        setCommandButtonEnabled(btn_gravar_video_frontal, enabled);
+        setCommandButtonEnabled(btn_gravar_video_traseiro, enabled);
+        setCommandButtonEnabled(btn_tirar_foto_frontal, enabled);
+        setCommandButtonEnabled(btn_tirar_foto_traseira, enabled);
+        setCommandButtonEnabled(btn_gravar_audio_5, enabled);
+        setCommandButtonEnabled(btn_gravar_audio_10, enabled);
+        setCommandButtonEnabled(btn_gravar_audio_15, enabled);
+        setCommandButtonEnabled(btn_mensagens, enabled);
+        setCommandButtonEnabled(btn_localizacao, enabled);
+    }
+
+    private void setCommandButtonEnabled(Button button, boolean enabled) {
+        if (button != null) {
+            button.setEnabled(enabled);
+        }
     }
 
     private void startPresenceRefresh() {

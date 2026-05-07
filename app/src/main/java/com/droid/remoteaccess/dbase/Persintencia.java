@@ -5,14 +5,12 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
-import android.os.Environment;
 import android.util.Log;
 
 import com.droid.remoteaccess.feature.Contato;
 import com.droid.remoteaccess.feature.HMContato;
 import com.droid.remoteaccess.others.Methods;
 
-import java.io.File;
 import java.util.ArrayList;
 
 /**
@@ -20,10 +18,9 @@ import java.util.ArrayList;
  */
 public class Persintencia extends SQLiteOpenHelper {
 
-    //public static final String BANCO = "/storage/extSdCard/BancoDados/contatosdbase.db3";
-    public static final String BANCO = GetPathStorage() + "remoteAccess.db3";
+    public static final String BANCO = "remoteAccess.db3";
 
-    public static final int VERSAO = 31;
+    public static final int VERSAO = 32;
     //
     public static final String CONTATOS = "contatos";
     public static final String MENSAGENS = "mensagens";
@@ -38,87 +35,20 @@ public class Persintencia extends SQLiteOpenHelper {
         super(context, BANCO, null, VERSAO);
     }
 
-    /* Checks if external storage is available for read and write */
-    public static boolean isExternalStorageMediaMounted() {
-        return (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState()));
-    }
-
-    public static String GetPathStorage() {
-        String strSDCardPath = "";
-        String strDirectory = "";
-        String strPaste = "/DBase/";
-        try {
-            if (isExternalStorageMediaMounted()) {
-                strSDCardPath = System.getenv("SECONDARY_STORAGE");
-                if ((null == strSDCardPath) || (strSDCardPath.length() == 0)) {
-                    strSDCardPath = System.getenv("EXTERNAL_SDCARD_STORAGE");
-                }
-                strDirectory = CreateGetDirectory(strSDCardPath + strPaste);
-            }
-        } catch (Exception e) {
-        } finally {
-            if (strSDCardPath == "" || strDirectory == "") {
-                strSDCardPath = Environment.getExternalStorageDirectory().toString();
-                strDirectory = CreateGetDirectory(strSDCardPath + strPaste);
-            }
-        }
-        return strDirectory;
-    }
-
-    private static void TimeSleep(Integer seg) {
-        try {
-            Thread.sleep(seg);
-        } catch (Exception ex) {
-        }
-    }
-
-    public static String CreateGetDirectory(String pathStorage) {
-        String pathDirectory = "";
-
-        try {
-
-            File myNewFolder = new File(pathStorage);
-
-            if (!myNewFolder.exists()) {
-                myNewFolder.mkdir();
-                TimeSleep(1000);
-            }
-            if (myNewFolder.exists()) {
-                pathDirectory = pathStorage;
-            }
-        } catch (Exception e) {
-
-        }
-        return pathDirectory;
-
-    }
-
     private void CreateTabelaContatos(SQLiteDatabase db)
     {
-        StringBuilder stringBuilder = new StringBuilder();       //
-
-
-        stringBuilder.append("CREATE TABLE IF NOT EXISTS [" + CONTATOS + "] (\n" +
-                "  [id] CHAR(20) NOT NULL, \n" +
-                "  [email] CHAR(100) NOT NULL, \n" +
-                "  [token] CHAR(200) NOT NULL, \n" +
-                "  [device] CHAR(100));\n" +
-                "  CONSTRAINT [] PRIMARY KEY ([id])); ");
-        //
-        db.execSQL(stringBuilder.toString());
+        db.execSQL("CREATE TABLE IF NOT EXISTS " + CONTATOS + " ("
+                + ID + " TEXT PRIMARY KEY NOT NULL, "
+                + EMAIL + " TEXT NOT NULL, "
+                + TOKEN + " TEXT NOT NULL, "
+                + DEVICE + " TEXT);");
     }
 
     private void CreateTabelaMensagens(SQLiteDatabase db) {
-
-        StringBuilder stringBuilder = new StringBuilder();       //
-
-        stringBuilder.append("CREATE TABLE IF NOT EXISTS [" + MENSAGENS + "] (\n" +
-                "  [id] CHAR(20) NOT NULL, \n" +
-                "  [email] CHAR(100) NOT NULL, \n" +
-                "  [mensagem] CHAR(1024));\n" +
-                "  CONSTRAINT [] FOREIGN KEY ([id])); ");
-        //
-        db.execSQL(stringBuilder.toString());
+        db.execSQL("CREATE TABLE IF NOT EXISTS " + MENSAGENS + " ("
+                + ID + " TEXT NOT NULL, "
+                + EMAIL + " TEXT NOT NULL, "
+                + MENSAGEM + " TEXT);");
     }
 
     @Override

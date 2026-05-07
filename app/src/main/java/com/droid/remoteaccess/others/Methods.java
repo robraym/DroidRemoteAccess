@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 import androidx.core.app.ActivityCompat;
 
@@ -42,6 +43,7 @@ public class Methods {
     public static final int PERMISSION_NOTIFICATIONS = 3;
 
     public static final String GETIDDEVICE = "";
+    private static final String PREF_REMOTE_ACCESS_INSTALL_ID = "remote_access_install_id_v1";
 
     public static String getEmail(Context context) {
         String accountEmail = getPrimaryAccountEmail(context);
@@ -177,11 +179,45 @@ public class Methods {
     }
 
     public static String getIDDevice(Context context) {
-        String androidId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
-        if (androidId == null || androidId.isEmpty()) {
-            return "0000000000";
+        if (context == null) {
+            return "ra_00000000000000000000";
         }
-        return androidId;
+        Context appContext = context.getApplicationContext();
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(appContext);
+        String installId = preferences.getString(PREF_REMOTE_ACCESS_INSTALL_ID, "");
+        if (isValidRemoteAccessInstallId(installId)) {
+            return installId;
+        }
+
+        synchronized (Methods.class) {
+            installId = preferences.getString(PREF_REMOTE_ACCESS_INSTALL_ID, "");
+            if (isValidRemoteAccessInstallId(installId)) {
+                return installId;
+            }
+            installId = createRemoteAccessInstallId(appContext);
+            preferences.edit().putString(PREF_REMOTE_ACCESS_INSTALL_ID, installId).apply();
+            return installId;
+        }
+    }
+
+    private static boolean isValidRemoteAccessInstallId(String installId) {
+        return installId != null && installId.matches("ra_[A-Za-z0-9]{20}");
+    }
+
+    private static String createRemoteAccessInstallId(Context context) {
+        String seed = UUID.randomUUID().toString().replace("-", "");
+        try {
+            String androidId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
+            if (androidId != null && !androidId.isEmpty()) {
+                seed = seed + androidId.replaceAll("[^A-Za-z0-9]", "");
+            }
+        } catch (Exception ignored) {
+        }
+        String compact = seed.replaceAll("[^A-Za-z0-9]", "");
+        if (compact.length() < 20) {
+            compact = compact + UUID.randomUUID().toString().replace("-", "");
+        }
+        return "ra_" + compact.substring(0, 20);
     }
 
     public static void showMessage(final Activity activity, String mensagem) {

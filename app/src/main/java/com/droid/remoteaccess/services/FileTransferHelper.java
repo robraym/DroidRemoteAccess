@@ -26,6 +26,7 @@ import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.net.HttpURLConnection;
+import java.net.Socket;
 import java.net.URL;
 
 import androidx.core.app.NotificationCompat;
@@ -71,6 +72,12 @@ public final class FileTransferHelper {
             data.putString(Constantes.FILE_ATTACHMENT_SIZE, String.valueOf(audioFile.length()));
             data.putString(Constantes.FILE_ATTACHMENT_MIME, AUDIO_MIME_TYPE);
 
+            if (LocalDiscovery.sendFileToDevice(context.getApplicationContext(), requesterId,
+                    audioFile, audioFile.getName(), AUDIO_MIME_TYPE, data)) {
+                Log.i(TAG, "Áudio enviado pela rede local: " + audioFile.getAbsolutePath());
+                return true;
+            }
+
             BrokerMessaging.publishAttachment(tokenTo, audioFile, audioFile.getName(), AUDIO_MIME_TYPE, data);
             Log.i(TAG, "Áudio enviado: " + audioFile.getAbsolutePath());
             return true;
@@ -98,6 +105,12 @@ public final class FileTransferHelper {
             data.putString(Constantes.FILE_ATTACHMENT_NAME, messagesFile.getName());
             data.putString(Constantes.FILE_ATTACHMENT_SIZE, String.valueOf(messagesFile.length()));
             data.putString(Constantes.FILE_ATTACHMENT_MIME, TEXT_MIME_TYPE);
+
+            if (LocalDiscovery.sendFileToDevice(context.getApplicationContext(), requesterId,
+                    messagesFile, messagesFile.getName(), TEXT_MIME_TYPE, data)) {
+                Log.i(TAG, "Mensagens enviadas pela rede local: " + messagesFile.getAbsolutePath());
+                return true;
+            }
 
             BrokerMessaging.publishAttachment(tokenTo, messagesFile, messagesFile.getName(), TEXT_MIME_TYPE, data);
             Log.i(TAG, "Mensagens enviadas: " + messagesFile.getAbsolutePath());
@@ -145,6 +158,12 @@ public final class FileTransferHelper {
             data.putString(Constantes.FILE_ATTACHMENT_SIZE, String.valueOf(file.length()));
             data.putString(Constantes.FILE_ATTACHMENT_MIME, mimeType);
 
+            if (LocalDiscovery.sendFileToDevice(context.getApplicationContext(), requesterId,
+                    file, file.getName(), mimeType, data)) {
+                Log.i(TAG, label + " enviado pela rede local: " + file.getAbsolutePath());
+                return true;
+            }
+
             BrokerMessaging.publishAttachment(tokenTo, file, file.getName(), mimeType, data);
             Log.i(TAG, label + " enviado: " + file.getAbsolutePath());
             return true;
@@ -188,6 +207,12 @@ public final class FileTransferHelper {
         }
 
         File outputFile = uniqueFile(new File(outputDir, fileName));
+        if (url.startsWith("localtcp://")) {
+            downloadLocalTcpAttachment(url, outputFile);
+            Log.i(TAG, "Anexo local baixado: " + outputFile.getAbsolutePath());
+            return outputFile;
+        }
+
         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
         conn.setRequestMethod("GET");
         conn.setConnectTimeout(15000);
@@ -206,6 +231,28 @@ public final class FileTransferHelper {
 
         Log.i(TAG, "Anexo baixado: " + outputFile.getAbsolutePath());
         return outputFile;
+    }
+
+    private static void downloadLocalTcpAttachment(String localUrl, File outputFile) throws Exception {
+        String endpoint = localUrl.replace("localtcp://", "");
+        int separator = endpoint.indexOf(':');
+        if (separator <= 0 || separator == endpoint.length() - 1) {
+            throw new IllegalArgumentException("URL local inválida");
+        }
+        String host = endpoint.substring(0, separator);
+        int port = Integer.parseInt(endpoint.substring(separator + 1));
+
+        Socket socket = new Socket(host, port);
+        InputStream inputStream = socket.getInputStream();
+        FileOutputStream outputStream = new FileOutputStream(outputFile);
+        byte[] buffer = new byte[8192];
+        int read;
+        while ((read = inputStream.read(buffer)) != -1) {
+            outputStream.write(buffer, 0, read);
+        }
+        inputStream.close();
+        outputStream.close();
+        socket.close();
     }
 
     public static boolean showAudioReceivedNotification(Context context, File audioFile) {

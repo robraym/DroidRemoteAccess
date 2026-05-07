@@ -67,12 +67,19 @@ public class RegistrationIntentService extends IntentService {
                 contato_from.setToken(token);
                 contato_from.setDevice(device);
 
-                BrokerMessaging.publishContact(context, contato_from.getId(), contato_from.getEmail(), contato_from.getToken(), contato_from.getDevice());
                 if (persintencia.JaExisteContatoCadastrado(contato_from.getId())) {
                     persintencia.AtualizarContato(contato_from);
                 }
                 else {
                     persintencia.InserirContato(contato_from);
+                }
+
+                try {
+                    LocalDiscovery.sendAnnounceAsync(context);
+                    BrokerMessaging.publishContact(context, id_from, email, token, device);
+                    Log.i(TAG, "Contact announcement sent");
+                } catch (Exception ex) {
+                    Log.d(TAG, "Contact announcement failed; discovery will retry later", ex);
                 }
             }
             else
@@ -107,8 +114,16 @@ public class RegistrationIntentService extends IntentService {
                 }
                 data.putString(Constantes.COMMAND_ID, commandId);
                 data.putString(Constantes.MESSAGE, message);
-                BrokerMessaging.publishCommand(token, data);
-                Log.i(TAG, "Command sent: " + message);
+                boolean localSent = LocalDiscovery.sendMessageToDevice(context, id_to, data);
+                try {
+                    BrokerMessaging.publishCommand(token, data);
+                    Log.i(TAG, "Command sent: " + message);
+                } catch (Exception ex) {
+                    if (!localSent) {
+                        throw ex;
+                    }
+                    Log.d(TAG, "Command sent locally; broker failed: " + message, ex);
+                }
             }
 
             sharedPreferences.edit().putBoolean(Constantes.SENT_TOKEN_TO_SERVER, true).apply();

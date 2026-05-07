@@ -13,7 +13,22 @@
     <string name="contact_icon_text">RA</string>
     <string name="device_presence_online_now">Online agora</string>
     <string name="device_presence_offline">Offline / tela apagada</string>
+    <string name="device_presence_offline_elapsed">Offline há %1$s</string>
+    <string name="device_presence_without_contact_elapsed">Sem contato há %1$s</string>
+    <string name="device_presence_less_than_minute">menos de 1 min</string>
     <string name="device_presence_unknown">Status desconhecido</string>
+    <plurals name="device_presence_minutes">
+        <item quantity="one">%1$d min</item>
+        <item quantity="other">%1$d min</item>
+    </plurals>
+    <plurals name="device_presence_hours">
+        <item quantity="one">%1$d h</item>
+        <item quantity="other">%1$d h</item>
+    </plurals>
+    <plurals name="device_presence_days">
+        <item quantity="one">%1$d dia</item>
+        <item quantity="other">%1$d dias</item>
+    </plurals>
     <string name="contact_identify_device">Identificar</string>
     <string name="contact_identifying_device">Buscando...</string>
     <string name="contact_identified_device">Nome atualizado: %1$s</string>
@@ -46,6 +61,7 @@
     <string name="remote_waiting_location">Aguardando</string>
     <string name="remote_location_not_available">Não foi possível obter a localização do aparelho remoto agora.</string>
     <string name="remote_command_timeout">Não houve resposta do aparelho. Tente novamente.</string>
+    <string name="remote_command_remote_offline">O aparelho remoto está offline/tela apagada. Ligue a tela para enviar comandos.</string>
     <string name="remote_location_open_error">Não foi possível abrir a localização recebida.</string>
     <string name="remote_audio_received">Áudio recebido em: %1$s</string>
     <string name="remote_audio_notification_title">Áudio recebido</string>
@@ -120,6 +136,8 @@
     <string name="remote_status_cancelled">Comando cancelado</string>
     <string name="remote_status_cancelled_detail">Você já pode enviar outro comando.</string>
     <string name="remote_status_no_response">Sem resposta</string>
+    <string name="remote_status_remote_offline">Aparelho offline</string>
+    <string name="remote_status_remote_offline_detail">Ligue a tela do aparelho remoto para enviar comandos.</string>
     <string name="remote_status_waiting">Comando enviado\nAguardando confirmação...</string>
     <string name="remote_status_recording">Gravando no aparelho remoto.</string>
     <string name="remote_status_video_ready">Vídeo pronto. Toque em Enviar.</string>

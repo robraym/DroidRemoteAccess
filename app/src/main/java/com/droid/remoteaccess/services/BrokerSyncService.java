@@ -30,7 +30,7 @@ import java.net.HttpURLConnection;
 public class BrokerSyncService extends Service {
 
     private static final String TAG = "BrokerSyncService";
-    private static final String LAST_STREAM_ID = "broker_last_stream_id";
+    private static final String LAST_STREAM_ID = "broker_last_stream_id_discovery_v2";
     private static final int NOTIFICATION_ID = 1001;
     private static final String CHANNEL_ID = "broker_sync";
 
@@ -46,7 +46,7 @@ public class BrokerSyncService extends Service {
         startForegroundCompat();
         running = true;
         registerScreenStateReceiver();
-        startPresenceWorker();
+        LocalDiscovery.start(getApplicationContext());
         worker = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -79,7 +79,7 @@ public class BrokerSyncService extends Service {
         startForegroundCompat();
         running = true;
         registerScreenStateReceiver();
-        startPresenceWorker();
+        LocalDiscovery.start(getApplicationContext());
         if (worker == null || !worker.isAlive()) {
             running = true;
             worker = new Thread(new Runnable() {
@@ -100,7 +100,9 @@ public class BrokerSyncService extends Service {
         screenStateReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                DevicePresence.publishCurrentAsync(getApplicationContext());
+                String action = intent == null ? "" : intent.getAction();
+                Log.d(TAG, "Screen state changed: " + action);
+                LocalDiscovery.sendAnnounceAsync(getApplicationContext());
             }
         };
         IntentFilter filter = new IntentFilter();
@@ -175,6 +177,7 @@ public class BrokerSyncService extends Service {
             }
             screenStateReceiver = null;
         }
+        LocalDiscovery.stop();
         super.onDestroy();
     }
 
@@ -188,7 +191,10 @@ public class BrokerSyncService extends Service {
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
         while (running) {
             try {
-                String since = preferences.getString(LAST_STREAM_ID, "all");
+                String since = preferences.getString(LAST_STREAM_ID, "");
+                if ("all".equalsIgnoreCase(since)) {
+                    since = "";
+                }
                 currentConnection = BrokerMessaging.openStream(this, since);
                 BufferedReader reader = new BufferedReader(new InputStreamReader(currentConnection.getInputStream(), "UTF-8"));
                 String line;

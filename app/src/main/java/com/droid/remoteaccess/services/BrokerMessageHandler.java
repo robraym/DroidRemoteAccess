@@ -80,8 +80,16 @@ public final class BrokerMessageHandler {
                 data.putString(Constantes.LONGITUDE, String.valueOf(localizacao.getLongitude()));
             }
 
-            BrokerMessaging.publishResponse(token_to, data);
-            Log.i(TAG, "Response sent: " + message);
+            boolean localSent = LocalDiscovery.sendMessageToDevice(context.getApplicationContext(), requesterId, data);
+            try {
+                BrokerMessaging.publishResponse(token_to, data);
+                Log.i(TAG, "Response sent: " + message);
+            } catch (Exception ex) {
+                if (!localSent) {
+                    throw ex;
+                }
+                Log.d(TAG, "Response sent locally; broker failed: " + message, ex);
+            }
         } catch (Exception ex) {
             Log.d(TAG, "Failed to send response: " + message, ex);
         }
@@ -101,7 +109,6 @@ public final class BrokerMessageHandler {
         String message = data.getString(Constantes.MESSAGE);
 
         Persintencia persintencia = new Persintencia(serviceContext.getApplicationContext());
-        Contato contato_from = new Contato();
         String responseToken = reply_token;
         if (responseToken == null || responseToken.isEmpty()) {
             responseToken = token_from;
@@ -109,34 +116,41 @@ public final class BrokerMessageHandler {
         if ((responseToken == null || responseToken.isEmpty()) && id_from != null && !id_from.isEmpty()) {
             responseToken = BrokerMessaging.getDeviceTopicForId(id_from);
         }
-        if (id_from != null && !id_from.isEmpty()) {
-            String currentId = Methods.getIDDevice(serviceContext.getApplicationContext());
-            if (!id_from.equals(currentId)) {
-                persintencia.ApagarContatosMesmoDispositivo(device_from, id_from);
-            }
 
-            contato_from.setId(id_from);
-            contato_from.setEmail(email_from);
-            contato_from.setToken(responseToken);
-            contato_from.setDevice(device_from);
-
-            if (persintencia.JaExisteContatoCadastrado(contato_from.getId())) {
-                persintencia.AtualizarContato(contato_from);
-            } else {
-                persintencia.InserirContato(contato_from);
-                Intent mIntent = new Intent();
-                mIntent.setAction(Constantes.RECEIVERRESPONSELISTACONTATOS);
-                mIntent.addCategory(Intent.CATEGORY_DEFAULT);
-                mIntent.putExtra(Constantes.MESSAGE, "refresh");
-                LocalBroadcastManager.getInstance(serviceContext).sendBroadcast(mIntent);
-            }
+        if (Constantes.MESSAGE_DISCOVERY_REQUEST.equals(message)) {
+            handleDiscoveryRequest(serviceContext, persintencia, data, id_from, email_from,
+                    responseToken, device_from, command_id);
+            return;
         }
 
-        if (message != null) {
-            if (Constantes.MESSAGE_PRESENCE.equals(message)) {
-                DevicePresence.updateFromMessage(serviceContext, data);
+        if (Constantes.MESSAGE_DISCOVERY_RESPONSE.equals(message)) {
+            if (!isResponseForThisDevice(serviceContext, id_from, id_to, device_to)) {
+                Log.d(TAG, "Ignoring discovery response for another device");
                 return;
             }
+            if (DevicePresence.updateFromMessage(serviceContext, data)) {
+                Log.i(TAG, "Discovery response accepted: " + id_from);
+                upsertContact(serviceContext, persintencia, id_from, email_from, responseToken, device_from);
+            }
+            return;
+        }
+
+        if (Constantes.MESSAGE_PRESENCE.equals(message)) {
+            if (DevicePresence.updateFromMessage(serviceContext, data)) {
+                upsertContact(serviceContext, persintencia, id_from, email_from, responseToken, device_from);
+            }
+            return;
+        }
+
+        if (message == null || message.isEmpty()) {
+            if (isFreshContactAnnouncement(data)) {
+                DevicePresence.updateFromMessage(serviceContext, data);
+                upsertContact(serviceContext, persintencia, id_from, email_from, responseToken, device_from);
+            } else {
+                Log.d(TAG, "Ignoring stale contact announcement: " + id_from);
+            }
+            return;
+        }
 
             if (Constantes.FILE_TRANSFER_AUDIO.equals(message)) {
                 handleFileResponse(serviceContext, data, id_from, id_to, device_to, command_id,
@@ -255,6 +269,95 @@ public final class BrokerMessageHandler {
                     sendResponseToServer(serviceContext, responseToken, "r:" + message, null, id_from, device_from, command_id);
                 }
             }
+    }
+
+    private static void handleDiscoveryRequest(Context serviceContext, Persintencia persintencia, Bundle data,
+                                               String idFrom, String emailFrom, String responseToken,
+                                               String deviceFrom, String commandId) {
+        if (idFrom == null || idFrom.isEmpty()) {
+            return;
+        }
+
+        String currentId = Methods.getIDDevice(serviceContext.getApplicationContext());
+        if (idFrom.equals(currentId)) {
+            return;
+        }
+
+        if (!DevicePresence.updateFromMessage(serviceContext, data)) {
+            return;
+        }
+
+        upsertContact(serviceContext, persintencia, idFrom, emailFrom, responseToken, deviceFrom);
+
+        try {
+            Log.i(TAG, "Discovery request accepted, sending response to: " + idFrom);
+            BrokerMessaging.publishDiscoveryResponse(serviceContext.getApplicationContext(),
+                    responseToken, idFrom, commandId);
+        } catch (Exception ex) {
+            Log.d(TAG, "Failed to send discovery response", ex);
+        }
+    }
+
+    private static void upsertContact(Context serviceContext, Persintencia persintencia, String idFrom,
+                                      String emailFrom, String responseToken, String deviceFrom) {
+        if (idFrom == null || idFrom.isEmpty()) {
+            return;
+        }
+
+        String currentId = Methods.getIDDevice(serviceContext.getApplicationContext());
+        if (idFrom.equals(currentId)) {
+            return;
+        }
+
+        persintencia.ApagarContatosMesmoDispositivo(deviceFrom, idFrom);
+
+        Contato contatoFrom = new Contato();
+        contatoFrom.setId(idFrom);
+        contatoFrom.setEmail(emailFrom);
+        if (responseToken == null || responseToken.isEmpty()) {
+            responseToken = BrokerMessaging.getDeviceTopicForId(idFrom);
+        }
+        contatoFrom.setToken(responseToken);
+        contatoFrom.setDevice(deviceFrom);
+
+        if (persintencia.JaExisteContatoCadastrado(contatoFrom.getId())) {
+            persintencia.AtualizarContato(contatoFrom);
+            Log.i(TAG, "Contact updated: " + idFrom + " / " + deviceFrom);
+        } else {
+            persintencia.InserirContato(contatoFrom);
+            Log.i(TAG, "Contact inserted: " + idFrom + " / " + deviceFrom);
+            Intent intent = new Intent();
+            intent.setAction(Constantes.RECEIVERRESPONSELISTACONTATOS);
+            intent.addCategory(Intent.CATEGORY_DEFAULT);
+            intent.putExtra(Constantes.MESSAGE, "refresh");
+            LocalBroadcastManager.getInstance(serviceContext).sendBroadcast(intent);
+        }
+    }
+
+    public static void upsertDiscoveredContact(Context serviceContext, String idFrom,
+                                               String emailFrom, String responseToken,
+                                               String deviceFrom) {
+        if (serviceContext == null) {
+            return;
+        }
+        upsertContact(serviceContext.getApplicationContext(),
+                new Persintencia(serviceContext.getApplicationContext()),
+                idFrom, emailFrom, responseToken, deviceFrom);
+    }
+
+    private static boolean isFreshContactAnnouncement(Bundle data) {
+        long contactTime = parseLong(data == null ? null : data.getString(Constantes.CONTACT_TIME));
+        return DevicePresence.isRecentEventTime(contactTime, System.currentTimeMillis());
+    }
+
+    private static long parseLong(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (Exception ex) {
+            return 0L;
         }
     }
 
