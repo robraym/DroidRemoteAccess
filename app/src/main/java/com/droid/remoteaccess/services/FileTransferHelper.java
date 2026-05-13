@@ -11,6 +11,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.util.Log;
 
 import com.droid.remoteaccess.R;
@@ -36,7 +37,7 @@ import androidx.core.content.FileProvider;
 public final class FileTransferHelper {
 
     private static final String TAG = "FileTransferHelper";
-    private static final String RECEIVED_FOLDER = "RemoteAccessReceived";
+    private static final String RECEIVED_FOLDER = "Remote Access";
     private static final String AUDIO_MIME_TYPE = "audio/3gpp";
     private static final String VIDEO_MIME_TYPE = "video/mp4";
     private static final String PHOTO_MIME_TYPE = "image/jpeg";
@@ -82,6 +83,10 @@ public final class FileTransferHelper {
 
             if (sendFileViaCloudinary(context, tokenTo, requesterId, audioFile, AUDIO_MIME_TYPE, data, "Áudio")) {
                 return true;
+            }
+
+            if (CloudinaryUploadClient.isConfigured()) {
+                return false;
             }
 
             BrokerMessaging.publishAttachment(tokenTo, audioFile, audioFile.getName(), AUDIO_MIME_TYPE, data);
@@ -189,6 +194,10 @@ public final class FileTransferHelper {
                 return true;
             }
 
+            if (CloudinaryUploadClient.isConfigured()) {
+                return false;
+            }
+
             BrokerMessaging.publishAttachment(tokenTo, file, file.getName(), mimeType, data);
             Log.i(TAG, label + " enviado: " + file.getAbsolutePath());
             return true;
@@ -209,20 +218,28 @@ public final class FileTransferHelper {
             data.putString(Constantes.FILE_ATTACHMENT_URL, result.secureUrl);
             data.putString(Constantes.FILE_ATTACHMENT_SIZE, String.valueOf(result.bytes > 0 ? result.bytes : file.length()));
 
+            boolean transferSaved = FirebaseRemoteTransport.saveTransferToDeviceBlocking(
+                    context.getApplicationContext(), requesterId, data, FIREBASE_FILE_DELIVERY_TIMEOUT_MS);
             boolean firebaseSent = FirebaseRemoteTransport.sendMessageToDeviceBlocking(
                     context.getApplicationContext(), requesterId, data, FIREBASE_FILE_DELIVERY_TIMEOUT_MS);
+            boolean statusSent = sendAttachedTransferStatus(context, tokenTo, requesterId, data, label);
 
             boolean brokerSent = false;
             try {
                 BrokerMessaging.publishCommand(tokenTo, data);
                 brokerSent = true;
             } catch (Exception ex) {
-                Log.d(TAG, "URL do Cloudinary enviada pelo Firebase; broker falhou: " + label, ex);
+                Log.d(TAG, "Broker não confirmou a URL do Cloudinary: " + label, ex);
             }
 
-            if (firebaseSent || brokerSent) {
+            if (transferSaved || firebaseSent || statusSent) {
                 Log.i(TAG, label + " enviado pelo Cloudinary: " + file.getAbsolutePath());
                 return true;
+            }
+
+            if (brokerSent) {
+                Log.w(TAG, "Cloudinary subiu o arquivo, mas a URL só foi enviada pelo broker: " + label);
+                return false;
             }
 
             Log.w(TAG, "Cloudinary subiu o arquivo, mas não conseguiu entregar a URL: " + label);
@@ -231,6 +248,44 @@ public final class FileTransferHelper {
             Log.w(TAG, "Falha ao enviar pelo Cloudinary: " + label, ex);
             return false;
         }
+    }
+
+    private static boolean sendAttachedTransferStatus(Context context, String tokenTo, String requesterId,
+                                                      Bundle fileData, String label) {
+        String responseMessage = getTransferSentResponse(fileData.getString(Constantes.FILE_TRANSFER_TYPE));
+        if (responseMessage == null || responseMessage.isEmpty()) {
+            return false;
+        }
+
+        Bundle responseData = new Bundle(fileData);
+        responseData.putString(Constantes.MESSAGE, responseMessage);
+
+        boolean firebaseSent = FirebaseRemoteTransport.sendMessageToDeviceBlocking(
+                context.getApplicationContext(), requesterId, responseData, FIREBASE_FILE_DELIVERY_TIMEOUT_MS);
+        boolean brokerSent = false;
+        try {
+            BrokerMessaging.publishResponse(tokenTo, responseData);
+            brokerSent = true;
+        } catch (Exception ex) {
+            Log.d(TAG, "Status com anexo não enviado pelo broker: " + label, ex);
+        }
+        return firebaseSent || brokerSent;
+    }
+
+    private static String getTransferSentResponse(String transferType) {
+        if ("audio".equalsIgnoreCase(transferType)) {
+            return "r:ua:sent";
+        }
+        if ("video".equalsIgnoreCase(transferType)) {
+            return "r:uv:sent";
+        }
+        if ("photo".equalsIgnoreCase(transferType)) {
+            return "r:up:sent";
+        }
+        if ("messages".equalsIgnoreCase(transferType)) {
+            return "r:um:sent";
+        }
+        return "";
     }
 
     public static File downloadAttachment(Context context, Bundle data) throws Exception {
@@ -255,11 +310,8 @@ public final class FileTransferHelper {
             deviceFolder = "aparelho";
         }
 
-        File baseDir = context.getExternalFilesDir(null);
-        if (baseDir == null) {
-            baseDir = context.getFilesDir();
-        }
-        File outputDir = new File(new File(baseDir, RECEIVED_FOLDER), deviceFolder);
+        String transferType = data.getString(Constantes.FILE_TRANSFER_TYPE);
+        File outputDir = getReceivedOutputDir(context, transferType, deviceFolder);
         if (!outputDir.exists() && !outputDir.mkdirs()) {
             throw new IllegalStateException("Não foi possível criar a pasta de recebidos");
         }
@@ -297,6 +349,39 @@ public final class FileTransferHelper {
 
         Log.i(TAG, "Anexo baixado: " + outputFile.getAbsolutePath());
         return outputFile;
+    }
+
+    private static File getReceivedOutputDir(Context context, String transferType, String deviceFolder) {
+        File publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        File publicDir = new File(new File(new File(publicDownloads, RECEIVED_FOLDER),
+                getReceivedTypeFolder(transferType)), deviceFolder);
+        File parent = publicDir.getParentFile();
+        if (parent != null && (parent.exists() || parent.mkdirs())) {
+            return publicDir;
+        }
+
+        File baseDir = context.getExternalFilesDir(null);
+        if (baseDir == null) {
+            baseDir = context.getFilesDir();
+        }
+        return new File(new File(new File(baseDir, RECEIVED_FOLDER),
+                getReceivedTypeFolder(transferType)), deviceFolder);
+    }
+
+    private static String getReceivedTypeFolder(String transferType) {
+        if ("audio".equalsIgnoreCase(transferType)) {
+            return "Audios";
+        }
+        if ("video".equalsIgnoreCase(transferType)) {
+            return "Videos";
+        }
+        if ("photo".equalsIgnoreCase(transferType)) {
+            return "Fotos";
+        }
+        if ("messages".equalsIgnoreCase(transferType)) {
+            return "Mensagens";
+        }
+        return "Arquivos";
     }
 
     private static void downloadLocalTcpAttachment(String localUrl, File outputFile) throws Exception {

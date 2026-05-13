@@ -13,6 +13,7 @@ import com.droid.remoteaccess.others.DeviceNameResolver;
 import com.droid.remoteaccess.others.Methods;
 
 import java.util.ArrayList;
+import java.util.Locale;
 
 /**
  * Created by nalmir on 19/12/2015.
@@ -212,9 +213,49 @@ public class Persintencia extends SQLiteOpenHelper {
         if (device == null || device.isEmpty() || idAtual == null || idAtual.isEmpty()) {
             return;
         }
-        String[] argumentos = new String[]{device, idAtual};
-        String FILTRO = DEVICE + " = ? AND " + ID + " != ?";
-        getWritableDatabase().delete(CONTATOS, FILTRO, argumentos);
+        String deviceNormalizado = normalizarDeviceParaComparacao(device);
+        if (!isDeviceConfiavel(deviceNormalizado)) {
+            return;
+        }
+
+        ArrayList<String> idsParaApagar = new ArrayList<>();
+        Cursor cursor = null;
+        try {
+            cursor = getWritableDatabase().rawQuery(
+                    "SELECT " + ID + "," + DEVICE + " FROM " + CONTATOS + " WHERE " + ID + " != ?",
+                    new String[]{idAtual});
+            while (cursor.moveToNext()) {
+                String idExistente = cursor.getString(cursor.getColumnIndex(ID));
+                String deviceExistente = cursor.getString(cursor.getColumnIndex(DEVICE));
+                if (deviceNormalizado.equals(normalizarDeviceParaComparacao(deviceExistente))) {
+                    idsParaApagar.add(idExistente);
+                }
+            }
+        } catch (Exception e) {
+            Log.d("DBase", e.getMessage());
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+        for (String id : idsParaApagar) {
+            ApagarContato(id);
+        }
+    }
+
+    private String normalizarDeviceParaComparacao(String device) {
+        if (device == null) {
+            return "";
+        }
+        return Methods.formatDeviceName(device)
+                .toUpperCase(Locale.US)
+                .replaceAll("[^A-Z0-9]+", "");
+    }
+
+    private boolean isDeviceConfiavel(String deviceNormalizado) {
+        return deviceNormalizado != null
+                && !deviceNormalizado.isEmpty()
+                && !"APARELHOANDROID".equals(deviceNormalizado);
     }
 
     public void ApagarContato(String id) {

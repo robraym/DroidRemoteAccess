@@ -19,6 +19,7 @@ import com.google.firebase.database.ServerValue;
 import com.google.firebase.database.ValueEventListener;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -36,8 +37,10 @@ public final class FirebaseRemoteTransport {
     private static boolean started;
     private static DatabaseReference devicesRef;
     private static DatabaseReference inboxRef;
+    private static DatabaseReference transferInboxRef;
     private static ValueEventListener devicesListener;
     private static ChildEventListener inboxListener;
+    private static ChildEventListener transferInboxListener;
     private static Context appContext;
 
     private FirebaseRemoteTransport() {
@@ -57,8 +60,10 @@ public final class FirebaseRemoteTransport {
             DatabaseReference root = FirebaseDatabase.getInstance().getReference(ROOT);
             devicesRef = root.child("devices");
             inboxRef = root.child("mailboxes").child(Methods.getIDDevice(appContext));
+            transferInboxRef = root.child("transfers").child(Methods.getIDDevice(appContext));
             attachDevicesListener(appContext);
             attachInboxListener(appContext);
+            attachTransferInboxListener(appContext);
             registerDeviceAsync(appContext);
         }
     }
@@ -71,10 +76,15 @@ public final class FirebaseRemoteTransport {
             if (inboxRef != null && inboxListener != null) {
                 inboxRef.removeEventListener(inboxListener);
             }
+            if (transferInboxRef != null && transferInboxListener != null) {
+                transferInboxRef.removeEventListener(transferInboxListener);
+            }
             devicesRef = null;
             inboxRef = null;
+            transferInboxRef = null;
             devicesListener = null;
             inboxListener = null;
+            transferInboxListener = null;
             started = false;
             appContext = null;
         }
@@ -161,6 +171,68 @@ public final class FirebaseRemoteTransport {
         }
     }
 
+    public static boolean saveTransferToDeviceBlocking(Context context, String targetId,
+                                                       Bundle data, long timeoutMs) {
+        if (context == null || targetId == null || targetId.isEmpty() || data == null || !isAvailable(context)) {
+            return false;
+        }
+        String commandId = data.getString(Constantes.COMMAND_ID);
+        if (commandId == null || commandId.isEmpty()) {
+            return false;
+        }
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicBoolean success = new AtomicBoolean(false);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Map<String, Object> transfer = toMap(data);
+            transfer.put("createdAt", ServerValue.TIMESTAMP);
+            FirebaseDatabase.getInstance()
+                    .getReference(ROOT)
+                    .child("transfers")
+                    .child(targetId)
+                    .child(commandId)
+                    .setValue(transfer)
+                    .addOnCompleteListener(executor, task -> {
+                        success.set(task.isSuccessful());
+                        if (!task.isSuccessful()) {
+                            Log.w(TAG, "Firebase transfer failed: "
+                                    + data.getString(Constantes.MESSAGE), task.getException());
+                        }
+                        latch.countDown();
+                    });
+
+            boolean completed = latch.await(Math.max(1000, timeoutMs), TimeUnit.MILLISECONDS);
+            if (!completed) {
+                Log.w(TAG, "Firebase transfer timed out: " + data.getString(Constantes.MESSAGE));
+                return false;
+            }
+            Log.i(TAG, "Firebase transfer saved: " + data.getString(Constantes.MESSAGE));
+            return success.get();
+        } catch (Exception ex) {
+            Log.d(TAG, "Failed to save Firebase transfer", ex);
+            return false;
+        } finally {
+            executor.shutdown();
+        }
+    }
+
+    public static void removeTransferAsync(Context context, String commandId) {
+        if (context == null || commandId == null || commandId.isEmpty() || !isAvailable(context)) {
+            return;
+        }
+        try {
+            FirebaseDatabase.getInstance()
+                    .getReference(ROOT)
+                    .child("transfers")
+                    .child(Methods.getIDDevice(context.getApplicationContext()))
+                    .child(commandId)
+                    .removeValue();
+        } catch (Exception ex) {
+            Log.d(TAG, "Failed to remove Firebase transfer", ex);
+        }
+    }
+
     public static boolean isAvailable(Context context) {
         try {
             if (context == null) {
@@ -227,19 +299,43 @@ public final class FirebaseRemoteTransport {
         devicesListener = new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
+                Map<String, Bundle> newestByDevice = new HashMap<>();
+                long now = System.currentTimeMillis();
                 for (DataSnapshot child : snapshot.getChildren()) {
                     Bundle data = toBundle(child);
                     String id = data.getString(Constantes.ID_FROM);
                     if (id == null || id.isEmpty() || id.equals(Methods.getIDDevice(context))) {
                         continue;
                     }
-                    DevicePresence.updateFromMessage(context, data);
-                    BrokerMessageHandler.upsertDiscoveredContact(
-                            context,
-                            id,
-                            data.getString(Constantes.EMAIL_FROM),
-                            data.getString(Constantes.TOKEN_FROM),
-                            data.getString(Constantes.DEVICE_FROM));
+                    if (isCurrentDeviceAlias(context, data)) {
+                        continue;
+                    }
+
+                    long eventTime = parseLong(data.getString(Constantes.PRESENCE_TIME));
+                    if (!DevicePresence.isRecentEventTime(eventTime, now)) {
+                        continue;
+                    }
+
+                    String deviceKey = normalizeDeviceForComparison(data.getString(Constantes.DEVICE_FROM));
+                    if (!isReliableDeviceName(deviceKey)) {
+                        deviceKey = id;
+                    }
+
+                    Bundle previous = newestByDevice.get(deviceKey);
+                    if (previous == null || getSortTime(data) >= getSortTime(previous)) {
+                        newestByDevice.put(deviceKey, data);
+                    }
+                }
+
+                for (Bundle data : newestByDevice.values()) {
+                    if (DevicePresence.updateFromMessage(context, data)) {
+                        BrokerMessageHandler.upsertDiscoveredContact(
+                                context,
+                                data.getString(Constantes.ID_FROM),
+                                data.getString(Constantes.EMAIL_FROM),
+                                data.getString(Constantes.TOKEN_FROM),
+                                data.getString(Constantes.DEVICE_FROM));
+                    }
                 }
             }
 
@@ -249,6 +345,57 @@ public final class FirebaseRemoteTransport {
             }
         };
         devicesRef.addValueEventListener(devicesListener);
+    }
+
+    private static boolean isCurrentDeviceAlias(Context context, Bundle data) {
+        if (context == null || data == null) {
+            return false;
+        }
+        String id = data.getString(Constantes.ID_FROM);
+        String currentId = Methods.getIDDevice(context.getApplicationContext());
+        if (id != null && id.equals(currentId)) {
+            return true;
+        }
+
+        String remoteDevice = normalizeDeviceForComparison(data.getString(Constantes.DEVICE_FROM));
+        String currentDevice = normalizeDeviceForComparison(Methods.getNameDevice(context.getApplicationContext()));
+        return isReliableDeviceName(remoteDevice) && remoteDevice.equals(currentDevice);
+    }
+
+    private static long getSortTime(Bundle data) {
+        if (data == null) {
+            return 0L;
+        }
+        return Math.max(
+                Math.max(parseLong(data.getString(Constantes.PRESENCE_TIME)),
+                        parseLong(data.getString(Constantes.CONTACT_TIME))),
+                parseLong(data.getString("serverLastSeen")));
+    }
+
+    private static long parseLong(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (Exception ex) {
+            return 0L;
+        }
+    }
+
+    private static String normalizeDeviceForComparison(String value) {
+        if (value == null) {
+            return "";
+        }
+        return Methods.formatDeviceName(value)
+                .toUpperCase(Locale.US)
+                .replaceAll("[^A-Z0-9]+", "");
+    }
+
+    private static boolean isReliableDeviceName(String normalizedDevice) {
+        return normalizedDevice != null
+                && !normalizedDevice.isEmpty()
+                && !"APARELHOANDROID".equals(normalizedDevice);
     }
 
     private static void attachInboxListener(final Context context) {
@@ -283,6 +430,39 @@ public final class FirebaseRemoteTransport {
             }
         };
         inboxRef.addChildEventListener(inboxListener);
+    }
+
+    private static void attachTransferInboxListener(final Context context) {
+        transferInboxListener = new ChildEventListener() {
+            @Override
+            public void onChildAdded(@NonNull DataSnapshot snapshot, String previousChildName) {
+                Bundle data = toBundle(snapshot);
+                String idFrom = data.getString(Constantes.ID_FROM);
+                if (idFrom != null && idFrom.equals(Methods.getIDDevice(context))) {
+                    snapshot.getRef().removeValue();
+                    return;
+                }
+                BrokerMessageHandler.handleMessage(context, "/firebase-transfer", data);
+            }
+
+            @Override
+            public void onChildChanged(@NonNull DataSnapshot snapshot, String previousChildName) {
+            }
+
+            @Override
+            public void onChildRemoved(@NonNull DataSnapshot snapshot) {
+            }
+
+            @Override
+            public void onChildMoved(@NonNull DataSnapshot snapshot, String previousChildName) {
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.d(TAG, "Firebase transfer listener cancelled: " + error.getMessage());
+            }
+        };
+        transferInboxRef.addChildEventListener(transferInboxListener);
     }
 
     private static Map<String, Object> toMap(Bundle bundle) {

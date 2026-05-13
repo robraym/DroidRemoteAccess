@@ -67,12 +67,8 @@ public class RegistrationIntentService extends IntentService {
                 contato_from.setToken(token);
                 contato_from.setDevice(device);
 
-                if (persintencia.JaExisteContatoCadastrado(contato_from.getId())) {
-                    persintencia.AtualizarContato(contato_from);
-                }
-                else {
-                    persintencia.InserirContato(contato_from);
-                }
+                // O próprio aparelho não deve aparecer na lista de dispositivos controláveis.
+                persintencia.ApagarContato(contato_from.getId());
 
                 try {
                     FirebaseRemoteTransport.registerDeviceAsync(context);

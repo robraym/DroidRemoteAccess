@@ -8,6 +8,8 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.provider.Settings;
+import android.text.TextUtils;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -16,10 +18,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.droid.remoteaccess.feature.Constantes;
-import com.droid.remoteaccess.feature.Contato;
 import com.droid.remoteaccess.dbase.Persintencia;
 import com.droid.remoteaccess.R;
-import com.droid.remoteaccess.services.BrokerMessaging;
 import com.droid.remoteaccess.services.RegistrationIntentService;
 import com.droid.remoteaccess.others.Methods;
 
@@ -75,9 +75,7 @@ public class DroidRegistro extends AppCompatActivity {
                 if (sentToken) {
                     ChamaListaContatos();
                     Toast.makeText(context, getString(R.string.registration_success_message), Toast.LENGTH_SHORT).show();
-                    Intent mIntent = new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS");
-                    mIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    startActivity(mIntent);
+                    abrirAcessoNotificacoesSeNecessario();
                     finish();
                 } else {
                     Toast.makeText(context, getString(R.string.token_error_message), Toast.LENGTH_SHORT).show();
@@ -172,17 +170,29 @@ public class DroidRegistro extends AppCompatActivity {
     }
 
     private boolean ContatoCadastradoValido() {
-        String deviceId = Methods.getIDDevice(context);
-        boolean contatoCadastrado = persintencia.JaExisteContatoCadastrado(deviceId);
+        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        return sharedPreferences.getBoolean(Constantes.SENT_TOKEN_TO_SERVER, false);
+    }
 
-        if (contatoCadastrado) {
-            Contato contato = persintencia.ObterContato(deviceId);
-            String brokerToken = BrokerMessaging.getDeviceTopic(context);
-            if (contato == null || contato.getToken() == null || !contato.getToken().equals(brokerToken)) {
-                contatoCadastrado = false;
-            }
+    private void abrirAcessoNotificacoesSeNecessario() {
+        if (isNotificationListenerEnabled()) {
+            return;
         }
-        return contatoCadastrado;
+        Intent mIntent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+        mIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(mIntent);
+    }
+
+    private boolean isNotificationListenerEnabled() {
+        try {
+            String enabledListeners = Settings.Secure.getString(
+                    getContentResolver(),
+                    "enabled_notification_listeners");
+            return !TextUtils.isEmpty(enabledListeners)
+                    && enabledListeners.toLowerCase().contains(getPackageName().toLowerCase());
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
 

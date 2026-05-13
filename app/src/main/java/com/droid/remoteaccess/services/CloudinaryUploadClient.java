@@ -53,13 +53,19 @@ public final class CloudinaryUploadClient {
         byte[] presetPart = formFieldBytes(boundary, "upload_preset", BuildConfig.CLOUDINARY_UPLOAD_PRESET);
         byte[] fileHeader = fileHeaderBytes(boundary, "file", file, contentType);
         byte[] closing = utf8Bytes("--" + boundary + "--\r\n");
-        long contentLength = (long) presetPart.length + fileHeader.length + file.length() + closing.length;
+        byte[] fileEnding = utf8Bytes("\r\n");
+        long contentLength = (long) presetPart.length
+                + fileHeader.length
+                + file.length()
+                + fileEnding.length
+                + closing.length;
         conn.setFixedLengthStreamingMode(contentLength);
 
         OutputStream outputStream = conn.getOutputStream();
         outputStream.write(presetPart);
         outputStream.write(fileHeader);
         writeFileBytes(outputStream, file);
+        outputStream.write(fileEnding);
         outputStream.write(closing);
         outputStream.close();
 
@@ -126,7 +132,6 @@ public final class CloudinaryUploadClient {
             outputStream.write(buffer, 0, read);
         }
         inputStream.close();
-        outputStream.write(utf8Bytes("\r\n"));
     }
 
     private static String readResponseBody(HttpURLConnection conn, int responseCode) throws Exception {

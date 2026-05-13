@@ -205,6 +205,14 @@ public final class DevicePresence {
         return lastSeen > 0L && System.currentTimeMillis() - lastSeen <= ONLINE_MAX_AGE_MS;
     }
 
+    public static long getLastSeenTime(Context context, String deviceId) {
+        if (context == null || deviceId == null || deviceId.isEmpty()) {
+            return 0L;
+        }
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context.getApplicationContext());
+        return preferences.getLong(lastSeenKey(deviceId), 0L);
+    }
+
     public static boolean isScreenInteractive(Context context) {
         if (context == null) {
             return true;

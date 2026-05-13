@@ -18,6 +18,7 @@ import android.util.Patterns;
 
 import com.droid.remoteaccess.feature.Constantes;
 
+import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -44,6 +45,7 @@ public class Methods {
 
     public static final String GETIDDEVICE = "";
     private static final String PREF_REMOTE_ACCESS_INSTALL_ID = "remote_access_install_id_v1";
+    private static final String PREF_REMOTE_ACCESS_STABLE_ID = "remote_access_stable_device_id_v2";
 
     public static String getEmail(Context context) {
         String accountEmail = getPrimaryAccountEmail(context);
@@ -173,6 +175,7 @@ public class Methods {
         if (normalized.contains("SMF936")) return "Galaxy Z Fold4";
         if (normalized.contains("SMF946")) return "Galaxy Z Fold5";
         if (normalized.contains("SMF956")) return "Galaxy Z Fold6";
+        if (normalized.contains("SMF966")) return "Galaxy Z Fold7";
         if (upper.contains("FOLD")) return "Galaxy Z Fold";
 
         return deviceName.replaceFirst("(?i)^samsung\\s+", "Samsung ");
@@ -184,24 +187,40 @@ public class Methods {
         }
         Context appContext = context.getApplicationContext();
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(appContext);
-        String installId = preferences.getString(PREF_REMOTE_ACCESS_INSTALL_ID, "");
-        if (isValidRemoteAccessInstallId(installId)) {
-            return installId;
+        String stableId = preferences.getString(PREF_REMOTE_ACCESS_STABLE_ID, "");
+        if (isValidRemoteAccessInstallId(stableId)) {
+            return stableId;
         }
 
         synchronized (Methods.class) {
-            installId = preferences.getString(PREF_REMOTE_ACCESS_INSTALL_ID, "");
-            if (isValidRemoteAccessInstallId(installId)) {
-                return installId;
+            stableId = preferences.getString(PREF_REMOTE_ACCESS_STABLE_ID, "");
+            if (isValidRemoteAccessInstallId(stableId)) {
+                return stableId;
             }
-            installId = createRemoteAccessInstallId(appContext);
-            preferences.edit().putString(PREF_REMOTE_ACCESS_INSTALL_ID, installId).apply();
-            return installId;
+            stableId = createStableRemoteAccessId(appContext);
+            preferences.edit().putString(PREF_REMOTE_ACCESS_STABLE_ID, stableId).apply();
+            return stableId;
         }
     }
 
     private static boolean isValidRemoteAccessInstallId(String installId) {
         return installId != null && installId.matches("ra_[A-Za-z0-9]{20}");
+    }
+
+    private static String createStableRemoteAccessId(Context context) {
+        try {
+            String androidId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
+            if (androidId != null && !androidId.trim().isEmpty()
+                    && !"9774d56d682e549c".equals(androidId)) {
+                String hash = sha256Hex(context.getPackageName() + ":" + androidId.trim());
+                if (hash.length() >= 20) {
+                    return "ra_" + hash.substring(0, 20);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        return createRemoteAccessInstallId(context);
     }
 
     private static String createRemoteAccessInstallId(Context context) {
@@ -218,6 +237,20 @@ public class Methods {
             compact = compact + UUID.randomUUID().toString().replace("-", "");
         }
         return "ra_" + compact.substring(0, 20);
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(value.getBytes("UTF-8"));
+            StringBuilder builder = new StringBuilder();
+            for (byte b : bytes) {
+                builder.append(String.format(Locale.US, "%02x", b & 0xff));
+            }
+            return builder.toString();
+        } catch (Exception ex) {
+            return "";
+        }
     }
 
     public static void showMessage(final Activity activity, String mensagem) {

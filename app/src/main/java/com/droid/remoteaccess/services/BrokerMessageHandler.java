@@ -35,6 +35,7 @@ import com.droid.remoteaccess.others.Methods;
 import com.droid.remoteaccess.recorder.DroidAudioRecorder;
 
 import java.io.File;
+import java.util.Locale;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
@@ -183,8 +184,9 @@ public final class BrokerMessageHandler {
                     Log.d(TAG, "Ignoring response for another device: " + message);
                     return;
                 }
-                if (isDuplicateMessage(serviceContext, PROCESSED_RESPONSES, command_id)) {
-                    Log.d(TAG, "Ignoring duplicate response: " + command_id);
+                String responseKey = getResponseDedupKey(command_id, message, data);
+                if (isDuplicateMessage(serviceContext, PROCESSED_RESPONSES, responseKey)) {
+                    Log.d(TAG, "Ignoring duplicate response: " + responseKey);
                     return;
                 }
                 Log.i(TAG, "Response accepted: " + message);
@@ -202,6 +204,10 @@ public final class BrokerMessageHandler {
                 }
                 //
                 LocalBroadcastManager.getInstance(serviceContext).sendBroadcast(mIntent);
+                if (isTransferStatusWithAttachment(message, data)) {
+                    handleFileResponse(serviceContext, data, id_from, id_to, device_to, command_id,
+                            getTransferCompleteResponse(message), getTransferFileType(message));
+                }
             } else {
                 if (!isCommandForThisDevice(serviceContext, id_from, id_to, device_to)) {
                     Log.d(TAG, "Ignoring command for another device: " + message);
@@ -311,6 +317,12 @@ public final class BrokerMessageHandler {
             return;
         }
 
+        if (isCurrentDeviceAlias(serviceContext, idFrom, deviceFrom)) {
+            persintencia.ApagarContato(idFrom);
+            Log.i(TAG, "Ignoring current device alias: " + idFrom + " / " + deviceFrom);
+            return;
+        }
+
         persintencia.ApagarContatosMesmoDispositivo(deviceFrom, idFrom);
 
         Contato contatoFrom = new Contato();
@@ -334,6 +346,32 @@ public final class BrokerMessageHandler {
             intent.putExtra(Constantes.MESSAGE, "refresh");
             LocalBroadcastManager.getInstance(serviceContext).sendBroadcast(intent);
         }
+    }
+
+    private static boolean isCurrentDeviceAlias(Context context, String idFrom, String deviceFrom) {
+        String currentId = Methods.getIDDevice(context.getApplicationContext());
+        if (idFrom != null && idFrom.equals(currentId)) {
+            return true;
+        }
+
+        String currentDevice = normalizeDeviceForComparison(Methods.getNameDevice(context.getApplicationContext()));
+        String remoteDevice = normalizeDeviceForComparison(deviceFrom);
+        return isReliableDeviceName(remoteDevice) && remoteDevice.equals(currentDevice);
+    }
+
+    private static String normalizeDeviceForComparison(String value) {
+        if (value == null) {
+            return "";
+        }
+        return Methods.formatDeviceName(value)
+                .toUpperCase(Locale.US)
+                .replaceAll("[^A-Z0-9]+", "");
+    }
+
+    private static boolean isReliableDeviceName(String normalizedDevice) {
+        return normalizedDevice != null
+                && !normalizedDevice.isEmpty()
+                && !"APARELHOANDROID".equals(normalizedDevice);
     }
 
     public static void upsertDiscoveredContact(Context serviceContext, String idFrom,
@@ -502,17 +540,19 @@ public final class BrokerMessageHandler {
         final String finalCommandId = commandId;
         final String finalResponseMessage = responseMessage;
         final String finalFileType = fileType;
+        final String finalFileKey = fileKey;
         Thread downloadWorker = new Thread(new Runnable() {
             @Override
             public void run() {
-                receiveFileInBackground(appContext, fileData, finalCommandId, finalResponseMessage, finalFileType);
+                receiveFileInBackground(appContext, fileData, finalCommandId, finalResponseMessage,
+                        finalFileType, finalFileKey);
             }
         }, "RemoteFileDownload");
         downloadWorker.start();
     }
 
     private static void receiveFileInBackground(Context appContext, Bundle data, String commandId,
-                                                String responseMessage, String fileType) {
+                                                String responseMessage, String fileType, String fileKey) {
         try {
             File receivedFile = FileTransferHelper.downloadAttachment(appContext, data);
             boolean notificationShown;
@@ -534,9 +574,11 @@ public final class BrokerMessageHandler {
             mIntent.putExtra(Constantes.FILE_LOCAL_PATH, receivedFile.getAbsolutePath());
             mIntent.putExtra(Constantes.NOTIFICATION_SHOWN, notificationShown);
             LocalBroadcastManager.getInstance(appContext).sendBroadcast(mIntent);
+            FirebaseRemoteTransport.removeTransferAsync(appContext, commandId);
             Log.i(TAG, "File received: " + receivedFile.getAbsolutePath());
         } catch (Exception ex) {
             Log.e(TAG, "Failed to receive file", ex);
+            forgetProcessedMessage(appContext, PROCESSED_FILES, fileKey);
             Intent errorIntent = new Intent();
             errorIntent.setAction(Constantes.RECEIVERRESPONSECONTROLEREMOTO);
             errorIntent.addCategory(Intent.CATEGORY_DEFAULT);
@@ -557,6 +599,63 @@ public final class BrokerMessageHandler {
             return "r:um:error";
         }
         return "r:ua:error";
+    }
+
+    private static String getResponseDedupKey(String commandId, String message, Bundle data) {
+        if (commandId == null || commandId.isEmpty()) {
+            return commandId;
+        }
+        if (isTransferStatus(message)) {
+            return commandId + ":" + message
+                    + (hasFileAttachment(data) ? ":attachment" : ":status");
+        }
+        return commandId;
+    }
+
+    private static boolean isTransferStatusWithAttachment(String message, Bundle data) {
+        return isTransferStatus(message) && hasFileAttachment(data);
+    }
+
+    private static boolean isTransferStatus(String message) {
+        return "r:ua:sent".equalsIgnoreCase(message)
+                || "r:uv:sent".equalsIgnoreCase(message)
+                || "r:up:sent".equalsIgnoreCase(message)
+                || "r:um:sent".equalsIgnoreCase(message);
+    }
+
+    private static boolean hasFileAttachment(Bundle data) {
+        if (data == null) {
+            return false;
+        }
+        String url = data.getString(Constantes.FILE_ATTACHMENT_URL);
+        String inlineText = data.getString(Constantes.FILE_ATTACHMENT_TEXT);
+        return (url != null && !url.isEmpty()) || (inlineText != null && !inlineText.isEmpty());
+    }
+
+    private static String getTransferCompleteResponse(String message) {
+        if ("r:uv:sent".equalsIgnoreCase(message)) {
+            return "r:uv";
+        }
+        if ("r:up:sent".equalsIgnoreCase(message)) {
+            return "r:up";
+        }
+        if ("r:um:sent".equalsIgnoreCase(message)) {
+            return "r:um";
+        }
+        return "r:ua";
+    }
+
+    private static String getTransferFileType(String message) {
+        if ("r:uv:sent".equalsIgnoreCase(message)) {
+            return "video";
+        }
+        if ("r:up:sent".equalsIgnoreCase(message)) {
+            return "photo";
+        }
+        if ("r:um:sent".equalsIgnoreCase(message)) {
+            return "messages";
+        }
+        return "audio";
     }
 
     private static boolean isCommandForThisDevice(Context context, String idFrom, String idTo, String deviceTo) {
@@ -606,5 +705,20 @@ public final class BrokerMessageHandler {
         }
         preferences.edit().putString(preferenceKey, updated).apply();
         return false;
+    }
+
+    private static void forgetProcessedMessage(Context context, String preferenceKey, String commandId) {
+        if (commandId == null || commandId.isEmpty()) {
+            return;
+        }
+
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context.getApplicationContext());
+        String processed = preferences.getString(preferenceKey, "|");
+        String marker = "|" + commandId + "|";
+        if (!processed.contains(marker)) {
+            return;
+        }
+
+        preferences.edit().putString(preferenceKey, processed.replace(marker, "|")).apply();
     }
 }

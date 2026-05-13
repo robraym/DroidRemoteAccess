@@ -30,7 +30,9 @@ import com.droid.remoteaccess.services.LocalDiscovery;
 import com.droid.remoteaccess.services.RegistrationIntentService;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
@@ -190,17 +192,103 @@ public class DroidListaContatos extends AppCompatActivity {
     }
 
     private ArrayList<HMContato> listaContatosComPresenca() {
-        ArrayList<HMContato> contatos = persintencia.listaContatos(Methods.getIDDevice(context));
-        ArrayList<HMContato> contatosVisiveis = new ArrayList<>();
+        String currentId = Methods.getIDDevice(context);
+        String currentDevice = Methods.getNameDevice(context);
+        ArrayList<HMContato> contatos = persintencia.listaContatos(currentId);
+        Map<String, HMContato> contatosPorDevice = new LinkedHashMap<>();
+        ArrayList<HMContato> contatosSemDeviceConfiavel = new ArrayList<>();
         for (HMContato item : contatos) {
+            String id = item.get(HMContato.ID);
+            if (isCurrentDeviceAlias(item, currentId, currentDevice)) {
+                persintencia.ApagarContato(id);
+                continue;
+            }
+
+            String deviceKey = normalizeDeviceForComparison(
+                    firstNotEmpty(item.get(HMContato.DEVICE), item.get(HMContato.DEVICE_RAW)));
+            if (!isReliableDeviceName(deviceKey)) {
+                contatosSemDeviceConfiavel.add(item);
+                continue;
+            }
+
+            HMContato existente = contatosPorDevice.get(deviceKey);
+            if (existente == null) {
+                contatosPorDevice.put(deviceKey, item);
+                continue;
+            }
+
+            HMContato preferido = escolherContatoMaisRecente(existente, item);
+            HMContato duplicado = preferido == existente ? item : existente;
+            persintencia.ApagarContato(duplicado.get(HMContato.ID));
+            contatosPorDevice.put(deviceKey, preferido);
+        }
+
+        ArrayList<HMContato> contatosVisiveis = new ArrayList<>();
+        contatosVisiveis.addAll(contatosPorDevice.values());
+        contatosVisiveis.addAll(contatosSemDeviceConfiavel);
+        for (HMContato item : contatosVisiveis) {
             String id = item.get(HMContato.ID);
             String state = DevicePresence.getStatusState(this, id);
             String label = DevicePresence.getStatusText(this, id);
             item.put(HMContato.PRESENCE, state + "|" + label);
             item.put(HMContato.AVATAR, buildDeviceAvatar(item.get(HMContato.DEVICE), item.get(HMContato.DEVICE_RAW)));
-            contatosVisiveis.add(item);
         }
         return contatosVisiveis;
+    }
+
+    private HMContato escolherContatoMaisRecente(HMContato primeiro, HMContato segundo) {
+        long primeiroLastSeen = DevicePresence.getLastSeenTime(this, primeiro.get(HMContato.ID));
+        long segundoLastSeen = DevicePresence.getLastSeenTime(this, segundo.get(HMContato.ID));
+        if (segundoLastSeen > primeiroLastSeen) {
+            return segundo;
+        }
+        if (primeiroLastSeen > segundoLastSeen) {
+            return primeiro;
+        }
+
+        String primeiroState = DevicePresence.getStatusState(this, primeiro.get(HMContato.ID));
+        String segundoState = DevicePresence.getStatusState(this, segundo.get(HMContato.ID));
+        return getPresencePriority(segundoState) > getPresencePriority(primeiroState) ? segundo : primeiro;
+    }
+
+    private int getPresencePriority(String state) {
+        if (DevicePresence.STATE_ONLINE.equals(state)) {
+            return 3;
+        }
+        if (DevicePresence.STATE_OFFLINE.equals(state)) {
+            return 2;
+        }
+        return 1;
+    }
+
+    private boolean isCurrentDeviceAlias(HMContato item, String currentId, String currentDevice) {
+        if (item == null) {
+            return false;
+        }
+        String id = item.get(HMContato.ID);
+        if (id != null && id.equals(currentId)) {
+            return true;
+        }
+
+        String contactDevice = firstNotEmpty(item.get(HMContato.DEVICE), item.get(HMContato.DEVICE_RAW));
+        String contactNormalized = normalizeDeviceForComparison(contactDevice);
+        String currentNormalized = normalizeDeviceForComparison(currentDevice);
+        return isReliableDeviceName(contactNormalized) && contactNormalized.equals(currentNormalized);
+    }
+
+    private String normalizeDeviceForComparison(String value) {
+        if (value == null) {
+            return "";
+        }
+        return Methods.formatDeviceName(value)
+                .toUpperCase(Locale.US)
+                .replaceAll("[^A-Z0-9]+", "");
+    }
+
+    private boolean isReliableDeviceName(String normalizedDevice) {
+        return normalizedDevice != null
+                && !normalizedDevice.isEmpty()
+                && !"APARELHOANDROID".equals(normalizedDevice);
     }
 
     private String buildDeviceAvatar(String deviceName, String rawDevice) {

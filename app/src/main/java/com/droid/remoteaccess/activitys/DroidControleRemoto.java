@@ -40,6 +40,7 @@ public class DroidControleRemoto extends AppCompatActivity {
     private static final long RESPONSE_TIMEOUT_MS = 30000;
     private static final long LOCATION_RESPONSE_TIMEOUT_MS = 15000;
     private static final long MEDIA_RESPONSE_TIMEOUT_MS = 75000;
+    private static final long FILE_DOWNLOAD_TIMEOUT_MS = 90000;
 
     private Context context;
     private TextView tv_controlando;
@@ -67,11 +68,14 @@ public class DroidControleRemoto extends AppCompatActivity {
     private Handler responseTimeoutHandler;
     private Runnable responseTimeoutRunnable;
     private Runnable responseCountdownRunnable;
+    private Runnable fileDownloadTimeoutRunnable;
     private Runnable presenceRefreshRunnable;
     private Button pendingButton;
     private CharSequence pendingButtonOriginalText;
     private String pendingCommandId;
+    private String pendingFileDownloadCommandId;
     private final Set<String> canceledCommandIds = new HashSet<>();
+    private final Set<String> completedFileCommandIds = new HashSet<>();
 
     public DroidControleRemoto() {
     }
@@ -205,6 +209,7 @@ public class DroidControleRemoto extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         cancelResponseTimeout();
+        cancelFileDownloadTimeout(null);
         stopPresenceRefresh();
         LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver);
         super.onDestroy();
@@ -265,6 +270,7 @@ public class DroidControleRemoto extends AppCompatActivity {
         String canceledCommandId = pendingCommandId;
         Button canceledButton = pendingButton;
         cancelResponseTimeout();
+        cancelFileDownloadTimeout(canceledCommandId);
         if (canceledCommandId != null && !canceledCommandId.isEmpty()) {
             canceledCommandIds.add(canceledCommandId);
         }
@@ -454,6 +460,13 @@ public class DroidControleRemoto extends AppCompatActivity {
                 + getString(stringResId));
     }
 
+    private void setDownloadWaitingStatus(int stringResId) {
+        setStatusColor(R.color.statusWaiting);
+        setStatusText(getString(R.string.remote_status_download_waiting)
+                + "\n"
+                + getString(stringResId));
+    }
+
     private void setErrorStatus(int titleResId, int detailResId) {
         setStatusColor(R.color.statusError);
         setStatusText(getString(titleResId)
@@ -475,7 +488,7 @@ public class DroidControleRemoto extends AppCompatActivity {
         } else if (message.contentEquals("r:uv:error")) {
             setErrorStatus(R.string.remote_status_answered, R.string.remote_status_video_error);
         } else if (message.contentEquals("r:uv:sent")) {
-            setSuccessStatus(R.string.remote_video_transfer_waiting);
+            setDownloadWaitingStatus(R.string.remote_video_transfer_waiting);
         } else if (message.contentEquals("r:uv")) {
             setSuccessStatus(R.string.remote_status_video_received);
         } else if (message.contentEquals("r:pr:taken") || message.contentEquals("r:pr")) {
@@ -485,7 +498,7 @@ public class DroidControleRemoto extends AppCompatActivity {
         } else if (message.contentEquals("r:up:error")) {
             setErrorStatus(R.string.remote_status_answered, R.string.remote_status_photo_error);
         } else if (message.contentEquals("r:up:sent")) {
-            setSuccessStatus(R.string.remote_photo_transfer_waiting);
+            setDownloadWaitingStatus(R.string.remote_photo_transfer_waiting);
         } else if (message.contentEquals("r:up")) {
             setSuccessStatus(R.string.remote_status_photo_received);
         } else if (message.contentEquals("r:ar:ready")) {
@@ -501,13 +514,13 @@ public class DroidControleRemoto extends AppCompatActivity {
         } else if (message.contentEquals("r:ua:error")) {
             setErrorStatus(R.string.remote_status_answered, R.string.remote_status_audio_error);
         } else if (message.contentEquals("r:ua:sent")) {
-            setSuccessStatus(R.string.remote_audio_transfer_waiting);
+            setDownloadWaitingStatus(R.string.remote_audio_transfer_waiting);
         } else if (message.contentEquals("r:ua")) {
             setSuccessStatus(R.string.remote_status_audio_received);
         } else if (message.contentEquals("r:um:error")) {
             setErrorStatus(R.string.remote_status_answered, R.string.remote_status_messages_error);
         } else if (message.contentEquals("r:um:sent")) {
-            setSuccessStatus(R.string.remote_messages_transfer_waiting);
+            setDownloadWaitingStatus(R.string.remote_messages_transfer_waiting);
         } else if (message.contentEquals("r:um")) {
             setSuccessStatus(R.string.remote_status_messages_received);
         } else if (message.contentEquals("r:l")) {
@@ -580,6 +593,58 @@ public class DroidControleRemoto extends AppCompatActivity {
         }
     }
 
+    private void scheduleFileDownloadTimeout(final String commandId) {
+        cancelFileDownloadTimeout(null);
+        if (commandId == null || commandId.isEmpty()) {
+            return;
+        }
+        pendingFileDownloadCommandId = commandId;
+        fileDownloadTimeoutRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (pendingFileDownloadCommandId == null
+                        || !pendingFileDownloadCommandId.equals(commandId)) {
+                    return;
+                }
+                fileDownloadTimeoutRunnable = null;
+                pendingFileDownloadCommandId = null;
+                setErrorStatus(R.string.remote_status_download_timeout,
+                        R.string.remote_status_download_timeout_detail);
+                Toast.makeText(DroidControleRemoto.this,
+                        R.string.remote_status_download_timeout_detail,
+                        Toast.LENGTH_LONG).show();
+            }
+        };
+        responseTimeoutHandler.postDelayed(fileDownloadTimeoutRunnable, FILE_DOWNLOAD_TIMEOUT_MS);
+    }
+
+    private void cancelFileDownloadTimeout(String commandId) {
+        if (pendingFileDownloadCommandId != null && commandId != null
+                && !pendingFileDownloadCommandId.equals(commandId)) {
+            return;
+        }
+        if (responseTimeoutHandler != null && fileDownloadTimeoutRunnable != null) {
+            responseTimeoutHandler.removeCallbacks(fileDownloadTimeoutRunnable);
+        }
+        fileDownloadTimeoutRunnable = null;
+        pendingFileDownloadCommandId = null;
+    }
+
+    private boolean isFileTransferWaitingResponse(String message) {
+        return message != null
+                && (message.equalsIgnoreCase("r:ua:sent")
+                || message.equalsIgnoreCase("r:uv:sent")
+                || message.equalsIgnoreCase("r:up:sent")
+                || message.equalsIgnoreCase("r:um:sent"));
+    }
+
+    private boolean isFileTransferTerminalResponse(String message) {
+        return message != null
+                && ((message.startsWith("r:ua") || message.startsWith("r:uv")
+                || message.startsWith("r:up") || message.startsWith("r:um"))
+                && !isFileTransferWaitingResponse(message));
+    }
+
     public class ReceiverResponseControleRemoto extends BroadcastReceiver
     {
 
@@ -600,7 +665,20 @@ public class DroidControleRemoto extends AppCompatActivity {
             if (shouldIgnoreResponse(commandId)) {
                 return;
             }
+            if (isFileTransferWaitingResponse(message)
+                    && commandId != null
+                    && completedFileCommandIds.contains(commandId)) {
+                return;
+            }
             cancelResponseTimeout();
+            if (isFileTransferWaitingResponse(message)) {
+                scheduleFileDownloadTimeout(commandId);
+            } else if (isFileTransferTerminalResponse(message)) {
+                cancelFileDownloadTimeout(commandId);
+                if (commandId != null && !commandId.isEmpty()) {
+                    completedFileCommandIds.add(commandId);
+                }
+            }
             if (message.startsWith("r:l"))
             {
                 if (message.endsWith(":error")) {
