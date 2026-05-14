@@ -6,6 +6,7 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 
+import com.droid.remoteaccess.dbase.Persintencia;
 import com.droid.remoteaccess.feature.Constantes;
 import com.droid.remoteaccess.others.DevicePresence;
 import com.droid.remoteaccess.others.Methods;
@@ -19,8 +20,10 @@ import com.google.firebase.database.ServerValue;
 import com.google.firebase.database.ValueEventListener;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -284,10 +287,7 @@ public final class FirebaseRemoteTransport {
                     .getReference(ROOT)
                     .child("devices")
                     .child(id);
-            Map<String, Object> offlineValues = new HashMap<>();
-            offlineValues.put(Constantes.PRESENCE_SCREEN_ON, "0");
-            offlineValues.put("serverLastSeen", ServerValue.TIMESTAMP);
-            deviceRef.onDisconnect().updateChildren(offlineValues);
+            deviceRef.onDisconnect().removeValue();
             deviceRef.updateChildren(values);
             Log.i(TAG, "Firebase device registered");
         } catch (Exception ex) {
@@ -300,11 +300,13 @@ public final class FirebaseRemoteTransport {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 Map<String, Bundle> newestByDevice = new HashMap<>();
+                Set<String> activeIds = new HashSet<>();
                 long now = System.currentTimeMillis();
+                String currentId = Methods.getIDDevice(context);
                 for (DataSnapshot child : snapshot.getChildren()) {
                     Bundle data = toBundle(child);
                     String id = data.getString(Constantes.ID_FROM);
-                    if (id == null || id.isEmpty() || id.equals(Methods.getIDDevice(context))) {
+                    if (id == null || id.isEmpty() || id.equals(currentId)) {
                         continue;
                     }
                     if (isCurrentDeviceAlias(context, data)) {
@@ -316,6 +318,7 @@ public final class FirebaseRemoteTransport {
                         continue;
                     }
 
+                    activeIds.add(id);
                     String deviceKey = normalizeDeviceForComparison(data.getString(Constantes.DEVICE_FROM));
                     if (!isReliableDeviceName(deviceKey)) {
                         deviceKey = id;
@@ -337,6 +340,8 @@ public final class FirebaseRemoteTransport {
                                 data.getString(Constantes.DEVICE_FROM));
                     }
                 }
+                new Persintencia(context.getApplicationContext())
+                        .ApagarContatosAusentes(activeIds, currentId);
             }
 
             @Override

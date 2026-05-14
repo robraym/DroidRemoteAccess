@@ -73,6 +73,7 @@ public class DroidControleRemoto extends AppCompatActivity {
     private Button pendingButton;
     private CharSequence pendingButtonOriginalText;
     private String pendingCommandId;
+    private String pendingCommandMessage;
     private String pendingFileDownloadCommandId;
     private final Set<String> canceledCommandIds = new HashSet<>();
     private final Set<String> completedFileCommandIds = new HashSet<>();
@@ -217,9 +218,15 @@ public class DroidControleRemoto extends AppCompatActivity {
 
     private void EnabledButton (String message)
     {
+        EnabledButton(message, "", "");
+    }
+
+    private void EnabledButton (String message, String cameraFacing, String filePath)
+    {
         Button button = getButtonForResponse(message);
+        String resolvedCameraFacing = resolveCameraFacing(cameraFacing, filePath, button);
         restoreButton(button);
-        updateStatusForResponse(message);
+        updateStatusForResponse(message, resolvedCameraFacing);
 
     }
 
@@ -255,12 +262,13 @@ public class DroidControleRemoto extends AppCompatActivity {
         pendingButton = btn;
         pendingButtonOriginalText = btn.getText();
         pendingCommandId = commandId;
+        pendingCommandMessage = message;
         btn.setSelected(true);
         btn.setEnabled(false);
         btn.setText(getWaitingButtonText(message));
         setCommandButtonsEnabled(false);
         setCancelCommandVisible(true);
-        setWaitingStatus(getCountdownSeconds(getResponseTimeoutMs(message)));
+        setWaitingStatus(getCountdownSeconds(getResponseTimeoutMs(message)), message);
     }
 
     private void cancelPendingCommand() {
@@ -308,6 +316,25 @@ public class DroidControleRemoto extends AppCompatActivity {
             return getString(R.string.remote_button_locating);
         }
         return getString(R.string.remote_button_waiting);
+    }
+
+    private String getCommandStatusDetail(String message) {
+        if (message == null) {
+            return "";
+        }
+        if (message.equalsIgnoreCase("vf5")) {
+            return getString(R.string.remote_status_command_video_front);
+        }
+        if (message.equalsIgnoreCase("vb5")) {
+            return getString(R.string.remote_status_command_video_back);
+        }
+        if (message.equalsIgnoreCase("pf")) {
+            return getString(R.string.remote_status_command_photo_front);
+        }
+        if (message.equalsIgnoreCase("pb")) {
+            return getString(R.string.remote_status_command_photo_back);
+        }
+        return "";
     }
 
     private Button getButtonForResponse(String message) {
@@ -374,6 +401,7 @@ public class DroidControleRemoto extends AppCompatActivity {
             pendingButton = null;
             pendingButtonOriginalText = null;
             pendingCommandId = null;
+            pendingCommandMessage = null;
             setCancelCommandVisible(false);
             setCommandButtonsEnabled(true);
             updateRemotePresence();
@@ -446,11 +474,15 @@ public class DroidControleRemoto extends AppCompatActivity {
         }
     }
 
-    private void setWaitingStatus(int remainingSeconds) {
+    private void setWaitingStatus(int remainingSeconds, String message) {
+        String commandDetail = getCommandStatusDetail(message);
+        String status = getString(R.string.remote_status_sent) + "\n";
+        if (!commandDetail.isEmpty()) {
+            status += commandDetail + "\n";
+        }
+        status += getString(R.string.remote_status_waiting_countdown, remainingSeconds);
         setStatusColor(R.color.statusWaiting);
-        setStatusText(getString(R.string.remote_status_sent)
-                + "\n"
-                + getString(R.string.remote_status_waiting_countdown, remainingSeconds));
+        setStatusText(status);
     }
 
     private void setSuccessStatus(int stringResId) {
@@ -474,7 +506,7 @@ public class DroidControleRemoto extends AppCompatActivity {
                 + getString(detailResId));
     }
 
-    private void updateStatusForResponse(String message) {
+    private void updateStatusForResponse(String message, String cameraFacing) {
         if (message.contentEquals("r:vr:ready")) {
             setSuccessStatus(R.string.remote_status_video_ready);
         } else if (message.contentEquals("r:vr:recording") || message.contentEquals("r:vr")) {
@@ -488,19 +520,19 @@ public class DroidControleRemoto extends AppCompatActivity {
         } else if (message.contentEquals("r:uv:error")) {
             setErrorStatus(R.string.remote_status_answered, R.string.remote_status_video_error);
         } else if (message.contentEquals("r:uv:sent")) {
-            setDownloadWaitingStatus(R.string.remote_video_transfer_waiting);
+            setDownloadWaitingStatus(getVideoTransferWaitingStatusRes(cameraFacing));
         } else if (message.contentEquals("r:uv")) {
-            setSuccessStatus(R.string.remote_status_video_received);
+            setSuccessStatus(getVideoReceivedStatusRes(cameraFacing));
         } else if (message.contentEquals("r:pr:taken") || message.contentEquals("r:pr")) {
-            setSuccessStatus(R.string.remote_status_photo_taken);
+            setSuccessStatus(getPhotoTakenStatusRes(cameraFacing));
         } else if (message.contentEquals("r:pr:error")) {
             setErrorStatus(R.string.remote_status_answered, R.string.remote_status_photo_error);
         } else if (message.contentEquals("r:up:error")) {
             setErrorStatus(R.string.remote_status_answered, R.string.remote_status_photo_error);
         } else if (message.contentEquals("r:up:sent")) {
-            setDownloadWaitingStatus(R.string.remote_photo_transfer_waiting);
+            setDownloadWaitingStatus(getPhotoTransferWaitingStatusRes(cameraFacing));
         } else if (message.contentEquals("r:up")) {
-            setSuccessStatus(R.string.remote_status_photo_received);
+            setSuccessStatus(getPhotoReceivedStatusRes(cameraFacing));
         } else if (message.contentEquals("r:ar:ready")) {
             setSuccessStatus(R.string.remote_status_audio_ready);
         } else if (message.contentEquals("r:ar:recording") || message.contentEquals("r:ar")) {
@@ -575,7 +607,7 @@ public class DroidControleRemoto extends AppCompatActivity {
                 if (remainingMs <= 0) {
                     return;
                 }
-                setWaitingStatus(getCountdownSeconds(remainingMs));
+                setWaitingStatus(getCountdownSeconds(remainingMs), pendingCommandMessage);
                 responseTimeoutHandler.postDelayed(this, 1000);
             }
         };
@@ -722,14 +754,16 @@ public class DroidControleRemoto extends AppCompatActivity {
                 }
             } else if (message.startsWith("r:uv")) {
                 String filePath = intent.getStringExtra(Constantes.FILE_LOCAL_PATH);
+                String cameraFacing = resolveCameraFacing(
+                        intent.getStringExtra(Constantes.FILE_CAMERA_FACING), filePath, getButtonForResponse(message));
                 if (filePath != null && !filePath.isEmpty()) {
                     File videoFile = new File(filePath);
                     boolean notified = intent.getBooleanExtra(Constantes.NOTIFICATION_SHOWN, false);
                     Toast.makeText(DroidControleRemoto.this,
-                            getString(R.string.remote_video_received, filePath),
+                            getString(getVideoReceivedStringRes(cameraFacing), filePath),
                             Toast.LENGTH_LONG).show();
                     if (!notified) {
-                        showVideoReceivedDialog(videoFile);
+                        showVideoReceivedDialog(videoFile, cameraFacing);
                     }
                 } else if (message.contentEquals("r:uv:error")) {
                     Toast.makeText(DroidControleRemoto.this, R.string.remote_video_not_available, Toast.LENGTH_LONG).show();
@@ -744,14 +778,16 @@ public class DroidControleRemoto extends AppCompatActivity {
                 }
             } else if (message.startsWith("r:up")) {
                 String filePath = intent.getStringExtra(Constantes.FILE_LOCAL_PATH);
+                String cameraFacing = resolveCameraFacing(
+                        intent.getStringExtra(Constantes.FILE_CAMERA_FACING), filePath, getButtonForResponse(message));
                 if (filePath != null && !filePath.isEmpty()) {
                     File photoFile = new File(filePath);
                     boolean notified = intent.getBooleanExtra(Constantes.NOTIFICATION_SHOWN, false);
                     Toast.makeText(DroidControleRemoto.this,
-                            getString(R.string.remote_photo_received, filePath),
+                            getString(getPhotoReceivedStringRes(cameraFacing), filePath),
                             Toast.LENGTH_LONG).show();
                     if (!notified) {
-                        showPhotoReceivedDialog(photoFile);
+                        showPhotoReceivedDialog(photoFile, cameraFacing);
                     }
                 } else if (message.contentEquals("r:up:error")) {
                     Toast.makeText(DroidControleRemoto.this, R.string.remote_photo_not_available, Toast.LENGTH_LONG).show();
@@ -805,7 +841,9 @@ public class DroidControleRemoto extends AppCompatActivity {
                     Toast.makeText(DroidControleRemoto.this, R.string.remote_messages_transfer_waiting, Toast.LENGTH_SHORT).show();
                 }
             }
-            EnabledButton(message);
+            EnabledButton(message,
+                    intent.getStringExtra(Constantes.FILE_CAMERA_FACING),
+                    intent.getStringExtra(Constantes.FILE_LOCAL_PATH));
 
         }
     }
@@ -843,24 +881,149 @@ public class DroidControleRemoto extends AppCompatActivity {
                 .show();
     }
 
-    private void showVideoReceivedDialog(final File videoFile) {
+    private void showVideoReceivedDialog(final File videoFile, String cameraFacing) {
         new AlertDialog.Builder(this)
-                .setTitle(R.string.remote_video_notification_title)
-                .setMessage(getString(R.string.remote_video_ready_dialog_message, videoFile.getName()))
+                .setTitle(getVideoNotificationTitleRes(cameraFacing))
+                .setMessage(getString(getVideoReadyDialogMessageRes(cameraFacing), videoFile.getName()))
                 .setPositiveButton(R.string.remote_video_open, (dialog, which) ->
                         FileTransferHelper.openVideoFile(DroidControleRemoto.this, videoFile))
                 .setNegativeButton(R.string.remote_audio_notification_dismiss, null)
                 .show();
     }
 
-    private void showPhotoReceivedDialog(final File photoFile) {
+    private void showPhotoReceivedDialog(final File photoFile, String cameraFacing) {
         new AlertDialog.Builder(this)
-                .setTitle(R.string.remote_photo_notification_title)
-                .setMessage(getString(R.string.remote_photo_ready_dialog_message, photoFile.getName()))
+                .setTitle(getPhotoNotificationTitleRes(cameraFacing))
+                .setMessage(getString(getPhotoReadyDialogMessageRes(cameraFacing), photoFile.getName()))
                 .setPositiveButton(R.string.remote_photo_open, (dialog, which) ->
                         FileTransferHelper.openPhotoFile(DroidControleRemoto.this, photoFile))
                 .setNegativeButton(R.string.remote_audio_notification_dismiss, null)
                 .show();
+    }
+
+    private int getVideoReceivedStringRes(String cameraFacing) {
+        if (isBackCamera(cameraFacing)) {
+            return R.string.remote_video_received_back;
+        }
+        if (isFrontCamera(cameraFacing)) {
+            return R.string.remote_video_received_front;
+        }
+        return R.string.remote_video_received;
+    }
+
+    private int getPhotoReceivedStringRes(String cameraFacing) {
+        if (isBackCamera(cameraFacing)) {
+            return R.string.remote_photo_received_back;
+        }
+        if (isFrontCamera(cameraFacing)) {
+            return R.string.remote_photo_received_front;
+        }
+        return R.string.remote_photo_received;
+    }
+
+    private int getVideoNotificationTitleRes(String cameraFacing) {
+        if (isBackCamera(cameraFacing)) {
+            return R.string.remote_video_notification_title_back;
+        }
+        if (isFrontCamera(cameraFacing)) {
+            return R.string.remote_video_notification_title_front;
+        }
+        return R.string.remote_video_notification_title;
+    }
+
+    private int getPhotoNotificationTitleRes(String cameraFacing) {
+        if (isBackCamera(cameraFacing)) {
+            return R.string.remote_photo_notification_title_back;
+        }
+        if (isFrontCamera(cameraFacing)) {
+            return R.string.remote_photo_notification_title_front;
+        }
+        return R.string.remote_photo_notification_title;
+    }
+
+    private int getVideoReadyDialogMessageRes(String cameraFacing) {
+        return R.string.remote_video_ready_dialog_message;
+    }
+
+    private int getPhotoReadyDialogMessageRes(String cameraFacing) {
+        return R.string.remote_photo_ready_dialog_message;
+    }
+
+    private int getVideoTransferWaitingStatusRes(String cameraFacing) {
+        if (isBackCamera(cameraFacing)) {
+            return R.string.remote_status_video_transfer_waiting_back;
+        }
+        if (isFrontCamera(cameraFacing)) {
+            return R.string.remote_status_video_transfer_waiting_front;
+        }
+        return R.string.remote_video_transfer_waiting;
+    }
+
+    private int getPhotoTransferWaitingStatusRes(String cameraFacing) {
+        if (isBackCamera(cameraFacing)) {
+            return R.string.remote_status_photo_transfer_waiting_back;
+        }
+        if (isFrontCamera(cameraFacing)) {
+            return R.string.remote_status_photo_transfer_waiting_front;
+        }
+        return R.string.remote_photo_transfer_waiting;
+    }
+
+    private int getVideoReceivedStatusRes(String cameraFacing) {
+        if (isBackCamera(cameraFacing)) {
+            return R.string.remote_status_video_received_back;
+        }
+        if (isFrontCamera(cameraFacing)) {
+            return R.string.remote_status_video_received_front;
+        }
+        return R.string.remote_status_video_received;
+    }
+
+    private int getPhotoReceivedStatusRes(String cameraFacing) {
+        if (isBackCamera(cameraFacing)) {
+            return R.string.remote_status_photo_received_back;
+        }
+        if (isFrontCamera(cameraFacing)) {
+            return R.string.remote_status_photo_received_front;
+        }
+        return R.string.remote_status_photo_received;
+    }
+
+    private int getPhotoTakenStatusRes(String cameraFacing) {
+        if (isBackCamera(cameraFacing)) {
+            return R.string.remote_status_photo_taken_back;
+        }
+        if (isFrontCamera(cameraFacing)) {
+            return R.string.remote_status_photo_taken_front;
+        }
+        return R.string.remote_status_photo_taken;
+    }
+
+    private String resolveCameraFacing(String cameraFacing, String filePath, Button button) {
+        File file = (filePath == null || filePath.isEmpty()) ? null : new File(filePath);
+        String resolvedCameraFacing = FileTransferHelper.resolveCameraFacing(cameraFacing, file);
+        if (!resolvedCameraFacing.isEmpty()) {
+            return resolvedCameraFacing;
+        }
+        return getCameraFacingForButton(button);
+    }
+
+    private String getCameraFacingForButton(Button button) {
+        if (button == btn_gravar_video_traseiro || button == btn_tirar_foto_traseira) {
+            return Constantes.CAMERA_FACING_BACK;
+        }
+        if (button == btn_gravar_video_frontal || button == btn_tirar_foto_frontal) {
+            return Constantes.CAMERA_FACING_FRONT;
+        }
+        return "";
+    }
+
+    private boolean isBackCamera(String cameraFacing) {
+        return Constantes.CAMERA_FACING_BACK.equalsIgnoreCase(cameraFacing);
+    }
+
+    private boolean isFrontCamera(String cameraFacing) {
+        return Constantes.CAMERA_FACING_FRONT.equalsIgnoreCase(cameraFacing);
     }
 
     private void showMessagesReceivedDialog(final File messagesFile) {

@@ -14,6 +14,7 @@ import com.droid.remoteaccess.others.Methods;
 
 import java.util.ArrayList;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Created by nalmir on 19/12/2015.
@@ -264,6 +265,39 @@ public class Persintencia extends SQLiteOpenHelper {
         //
         getWritableDatabase().delete(CONTATOS, FILTRO, argumentos);
         getWritableDatabase().delete(MENSAGENS, FILTRO, argumentos);
+    }
+
+    public void ApagarContatosAusentes(Set<String> idsAtivos, String idAtual) {
+        if (idsAtivos == null) {
+            return;
+        }
+
+        ArrayList<String> idsParaApagar = new ArrayList<>();
+        Cursor cursor = null;
+        try {
+            cursor = getWritableDatabase().rawQuery(
+                    "SELECT " + ID + " FROM " + CONTATOS,
+                    null);
+            while (cursor.moveToNext()) {
+                String id = cursor.getString(cursor.getColumnIndex(ID));
+                if (id == null || id.isEmpty() || id.equals(idAtual)) {
+                    continue;
+                }
+                if (!idsAtivos.contains(id)) {
+                    idsParaApagar.add(id);
+                }
+            }
+        } catch (Exception e) {
+            Log.d("DBase", e.getMessage());
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+
+        for (String id : idsParaApagar) {
+            ApagarContato(id);
+        }
     }
 
     public StringBuilder ObterMensagens(String id) {

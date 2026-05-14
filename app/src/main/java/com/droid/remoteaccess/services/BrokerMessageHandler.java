@@ -555,13 +555,15 @@ public final class BrokerMessageHandler {
                                                 String responseMessage, String fileType, String fileKey) {
         try {
             File receivedFile = FileTransferHelper.downloadAttachment(appContext, data);
+            String cameraFacing = FileTransferHelper.resolveCameraFacing(
+                    data.getString(Constantes.FILE_CAMERA_FACING), receivedFile);
             boolean notificationShown;
             if ("audio".equalsIgnoreCase(fileType)) {
                 notificationShown = FileTransferHelper.showAudioReceivedNotification(appContext, receivedFile);
             } else if ("video".equalsIgnoreCase(fileType)) {
-                notificationShown = FileTransferHelper.showVideoReceivedNotification(appContext, receivedFile);
+                notificationShown = FileTransferHelper.showVideoReceivedNotification(appContext, receivedFile, cameraFacing);
             } else if ("photo".equalsIgnoreCase(fileType)) {
-                notificationShown = FileTransferHelper.showPhotoReceivedNotification(appContext, receivedFile);
+                notificationShown = FileTransferHelper.showPhotoReceivedNotification(appContext, receivedFile, cameraFacing);
             } else {
                 notificationShown = FileTransferHelper.showMessagesReceivedNotification(appContext, receivedFile);
             }
@@ -572,6 +574,7 @@ public final class BrokerMessageHandler {
             mIntent.putExtra(Constantes.MESSAGE, responseMessage);
             mIntent.putExtra(Constantes.COMMAND_ID, commandId);
             mIntent.putExtra(Constantes.FILE_LOCAL_PATH, receivedFile.getAbsolutePath());
+            mIntent.putExtra(Constantes.FILE_CAMERA_FACING, cameraFacing);
             mIntent.putExtra(Constantes.NOTIFICATION_SHOWN, notificationShown);
             LocalBroadcastManager.getInstance(appContext).sendBroadcast(mIntent);
             FirebaseRemoteTransport.removeTransferAsync(appContext, commandId);

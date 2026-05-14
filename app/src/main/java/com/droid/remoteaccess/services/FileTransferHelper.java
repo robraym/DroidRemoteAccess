@@ -150,20 +150,22 @@ public final class FileTransferHelper {
     public static boolean uploadLatestVideo(Context context, String tokenTo, String requesterId,
                                             String requesterDevice, String commandId) {
         File videoFile = DroidCameraCaptureService.getLatestVideoFile(context.getApplicationContext());
+        String cameraFacing = DroidCameraCaptureService.getLatestVideoCameraFacing(context.getApplicationContext());
         return uploadFile(context, tokenTo, requesterId, requesterDevice, commandId, videoFile,
-                Constantes.FILE_TRANSFER_VIDEO, "video", VIDEO_MIME_TYPE, "Vídeo");
+                Constantes.FILE_TRANSFER_VIDEO, "video", VIDEO_MIME_TYPE, "Vídeo", cameraFacing);
     }
 
     public static boolean uploadLatestPhoto(Context context, String tokenTo, String requesterId,
                                             String requesterDevice, String commandId) {
         File photoFile = DroidCameraCaptureService.getLatestPhotoFile(context.getApplicationContext());
+        String cameraFacing = DroidCameraCaptureService.getLatestPhotoCameraFacing(context.getApplicationContext());
         return uploadFile(context, tokenTo, requesterId, requesterDevice, commandId, photoFile,
-                Constantes.FILE_TRANSFER_PHOTO, "photo", PHOTO_MIME_TYPE, "Foto");
+                Constantes.FILE_TRANSFER_PHOTO, "photo", PHOTO_MIME_TYPE, "Foto", cameraFacing);
     }
 
     private static boolean uploadFile(Context context, String tokenTo, String requesterId, String requesterDevice,
                                       String commandId, File file, String transferMessage, String transferType,
-                                      String mimeType, String label) {
+                                      String mimeType, String label, String cameraFacing) {
         try {
             if (file == null) {
                 Log.w(TAG, "Nenhum arquivo encontrado para enviar: " + label);
@@ -183,6 +185,9 @@ public final class FileTransferHelper {
             data.putString(Constantes.FILE_ATTACHMENT_NAME, file.getName());
             data.putString(Constantes.FILE_ATTACHMENT_SIZE, String.valueOf(file.length()));
             data.putString(Constantes.FILE_ATTACHMENT_MIME, mimeType);
+            if (cameraFacing != null && !cameraFacing.isEmpty()) {
+                data.putString(Constantes.FILE_CAMERA_FACING, cameraFacing);
+            }
 
             if (LocalDiscovery.sendFileToDevice(context.getApplicationContext(), requesterId,
                     file, file.getName(), mimeType, data)) {
@@ -551,21 +556,39 @@ public final class FileTransferHelper {
     }
 
     public static boolean showVideoReceivedNotification(Context context, File videoFile) {
+        return showVideoReceivedNotification(context, videoFile, "");
+    }
+
+    public static boolean showVideoReceivedNotification(Context context, File videoFile, String cameraFacing) {
+        String resolvedCameraFacing = resolveCameraFacing(cameraFacing, videoFile);
         return showReceivedFileNotification(context, videoFile, VIDEO_CHANNEL_ID,
-                R.string.remote_video_notification_title,
-                R.string.remote_video_notification_text,
+                getVideoNotificationTitle(context, resolvedCameraFacing),
+                context.getString(R.string.remote_video_notification_text),
                 createVideoChooserIntent(context, getUriForFile(context, videoFile)));
     }
 
     public static boolean showPhotoReceivedNotification(Context context, File photoFile) {
+        return showPhotoReceivedNotification(context, photoFile, "");
+    }
+
+    public static boolean showPhotoReceivedNotification(Context context, File photoFile, String cameraFacing) {
+        String resolvedCameraFacing = resolveCameraFacing(cameraFacing, photoFile);
         return showReceivedFileNotification(context, photoFile, PHOTO_CHANNEL_ID,
-                R.string.remote_photo_notification_title,
-                R.string.remote_photo_notification_text,
+                getPhotoNotificationTitle(context, resolvedCameraFacing),
+                context.getString(R.string.remote_photo_notification_text),
                 createPhotoChooserIntent(context, getUriForFile(context, photoFile)));
     }
 
     private static boolean showReceivedFileNotification(Context context, File file, String channelId,
                                                         int titleRes, int textRes, Intent chooserIntent) {
+        return showReceivedFileNotification(context, file, channelId,
+                context.getString(titleRes),
+                context.getString(textRes),
+                chooserIntent);
+    }
+
+    private static boolean showReceivedFileNotification(Context context, File file, String channelId,
+                                                        String title, String text, Intent chooserIntent) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                     && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -581,7 +604,7 @@ public final class FileTransferHelper {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 NotificationChannel channel = new NotificationChannel(
                         channelId,
-                        context.getString(titleRes),
+                        title,
                         NotificationManager.IMPORTANCE_DEFAULT);
                 manager.createNotificationChannel(channel);
             }
@@ -609,10 +632,10 @@ public final class FileTransferHelper {
 
             NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channelId)
                     .setSmallIcon(R.drawable.ic_stat_remote_access)
-                    .setContentTitle(context.getString(titleRes))
-                    .setContentText(context.getString(textRes))
+                    .setContentTitle(title)
+                    .setContentText(text)
                     .setStyle(new NotificationCompat.BigTextStyle()
-                            .bigText(context.getString(textRes) + "\n" + file.getName()))
+                            .bigText(text + "\n" + file.getName()))
                     .setContentIntent(pendingIntent)
                     .addAction(R.drawable.ic_notification_close, context.getString(R.string.remote_audio_notification_dismiss), dismissPendingIntent)
                     .setAutoCancel(false)
@@ -628,6 +651,72 @@ public final class FileTransferHelper {
             Log.e(TAG, "Falha ao exibir notificação de arquivo recebido", ex);
             return false;
         }
+    }
+
+    private static String getVideoNotificationTitle(Context context, String cameraFacing) {
+        if (isBackCamera(cameraFacing)) {
+            return context.getString(R.string.remote_video_notification_title_back);
+        }
+        if (isFrontCamera(cameraFacing)) {
+            return context.getString(R.string.remote_video_notification_title_front);
+        }
+        return context.getString(R.string.remote_video_notification_title);
+    }
+
+    private static String getPhotoNotificationTitle(Context context, String cameraFacing) {
+        if (isBackCamera(cameraFacing)) {
+            return context.getString(R.string.remote_photo_notification_title_back);
+        }
+        if (isFrontCamera(cameraFacing)) {
+            return context.getString(R.string.remote_photo_notification_title_front);
+        }
+        return context.getString(R.string.remote_photo_notification_title);
+    }
+
+    private static boolean isBackCamera(String cameraFacing) {
+        return Constantes.CAMERA_FACING_BACK.equalsIgnoreCase(cameraFacing);
+    }
+
+    private static boolean isFrontCamera(String cameraFacing) {
+        return Constantes.CAMERA_FACING_FRONT.equalsIgnoreCase(cameraFacing);
+    }
+
+    public static String resolveCameraFacing(String cameraFacing, File file) {
+        String fromFileName = getCameraFacingFromFileName(file);
+        if (!fromFileName.isEmpty()) {
+            return fromFileName;
+        }
+        return normalizeCameraFacing(cameraFacing);
+    }
+
+    private static String normalizeCameraFacing(String cameraFacing) {
+        if (cameraFacing == null) {
+            return "";
+        }
+        if (cameraFacing.equalsIgnoreCase(Constantes.CAMERA_FACING_BACK)
+                || cameraFacing.equalsIgnoreCase("traseira")
+                || cameraFacing.equalsIgnoreCase("traseiro")) {
+            return Constantes.CAMERA_FACING_BACK;
+        }
+        if (cameraFacing.equalsIgnoreCase(Constantes.CAMERA_FACING_FRONT)
+                || cameraFacing.equalsIgnoreCase("frontal")) {
+            return Constantes.CAMERA_FACING_FRONT;
+        }
+        return "";
+    }
+
+    private static String getCameraFacingFromFileName(File file) {
+        if (file == null || file.getName() == null) {
+            return "";
+        }
+        String fileName = file.getName().toLowerCase(java.util.Locale.US);
+        if (fileName.contains("traseir") || fileName.contains("back")) {
+            return Constantes.CAMERA_FACING_BACK;
+        }
+        if (fileName.contains("frontal") || fileName.contains("front")) {
+            return Constantes.CAMERA_FACING_FRONT;
+        }
+        return "";
     }
 
     public static void openAudioFile(Context context, File audioFile) {

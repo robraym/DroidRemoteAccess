@@ -34,6 +34,9 @@ public class Constantes {
     public static final String FILE_ATTACHMENT_MIME = "file_attachment_mime";
     public static final String FILE_ATTACHMENT_SIZE = "file_attachment_size";
     public static final String FILE_ATTACHMENT_TEXT = "file_attachment_text";
+    public static final String FILE_CAMERA_FACING = "file_camera_facing";
+    public static final String CAMERA_FACING_FRONT = "front";
+    public static final String CAMERA_FACING_BACK = "back";
     public static final String FILE_LOCAL_PATH = "file_local_path";
     public static final String FILE_ORIGINAL_NAME = "file_original_name";
     public static final String FILE_CHUNK_ID = "file_chunk_id";

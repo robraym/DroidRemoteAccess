@@ -11,6 +11,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.graphics.ImageFormat;
+import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
@@ -65,8 +66,11 @@ public class DroidCameraCaptureService extends Service {
     private static final int VIDEO_BIT_RATE = 450000;
     private static final int VIDEO_FRAME_RATE = 15;
     private static final long VIDEO_5_SECONDS_MS = 5000;
+    private static final long PHOTO_WARMUP_MS = 800;
     private static final String PREF_LAST_VIDEO_FILE = "last_front_video_file";
     private static final String PREF_LAST_PHOTO_FILE = "last_front_photo_file";
+    private static final String PREF_LAST_VIDEO_CAMERA_FACING = "last_video_camera_facing";
+    private static final String PREF_LAST_PHOTO_CAMERA_FACING = "last_photo_camera_facing";
 
     private HandlerThread cameraThread;
     private Handler cameraHandler;
@@ -74,6 +78,8 @@ public class DroidCameraCaptureService extends Service {
     private CameraCaptureSession captureSession;
     private MediaRecorder mediaRecorder;
     private ImageReader imageReader;
+    private SurfaceTexture photoPreviewTexture;
+    private Surface photoPreviewSurface;
     private File currentVideoFile;
     private File currentPhotoFile;
     private boolean recording;
@@ -201,14 +207,15 @@ public class DroidCameraCaptureService extends Service {
                                             mediaRecorder.start();
                                             recording = true;
                                             saveLatestFile(PREF_LAST_VIDEO_FILE, currentVideoFile);
-                                            Log.i(TAG, "Front video recording started: " + currentVideoFile.getAbsolutePath());
+                                            saveLatestCameraFacing(PREF_LAST_VIDEO_CAMERA_FACING, cameraFacing);
+                                            Log.i(TAG, "Video recording started: " + currentVideoFile.getAbsolutePath());
                                             if (timed) {
                                                 scheduleTimedVideoStop(requestIntent, startId, durationMs, autoUpload);
                                             } else {
                                                 sendCameraCommandResponse(requestIntent, "r:vr:recording");
                                             }
                                         } catch (Exception ex) {
-                                            Log.e(TAG, "Failed to start front video capture", ex);
+                                            Log.e(TAG, "Failed to start video capture", ex);
                                             releaseVideoResources(false);
                                             sendCameraCommandResponse(requestIntent, autoUpload ? "r:uv:error" : "r:vr:error");
                                             finishIfIdle(startId);
@@ -217,14 +224,14 @@ public class DroidCameraCaptureService extends Service {
 
                                     @Override
                                     public void onConfigureFailed(@NonNull CameraCaptureSession session) {
-                                        Log.e(TAG, "Failed to configure front video capture session");
+                                        Log.e(TAG, "Failed to configure video capture session");
                                         releaseVideoResources(false);
                                         sendCameraCommandResponse(requestIntent, autoUpload ? "r:uv:error" : "r:vr:error");
                                         finishIfIdle(startId);
                                     }
                                 }, cameraHandler);
                     } catch (Exception ex) {
-                        Log.e(TAG, "Failed to prepare front video session", ex);
+                        Log.e(TAG, "Failed to prepare video session", ex);
                         releaseVideoResources(false);
                         sendCameraCommandResponse(requestIntent, autoUpload ? "r:uv:error" : "r:vr:error");
                         finishIfIdle(startId);
@@ -233,7 +240,7 @@ public class DroidCameraCaptureService extends Service {
 
                 @Override
                 public void onDisconnected(@NonNull CameraDevice camera) {
-                    Log.w(TAG, "Front camera disconnected during video");
+                    Log.w(TAG, "Camera disconnected during video");
                     releaseVideoResources(false);
                     sendCameraCommandResponse(requestIntent, autoUpload ? "r:uv:error" : "r:vr:error");
                     finishIfIdle(startId);
@@ -241,14 +248,14 @@ public class DroidCameraCaptureService extends Service {
 
                 @Override
                 public void onError(@NonNull CameraDevice camera, int error) {
-                    Log.e(TAG, "Front camera error during video: " + error);
+                    Log.e(TAG, "Camera error during video: " + error);
                     releaseVideoResources(false);
                     sendCameraCommandResponse(requestIntent, autoUpload ? "r:uv:error" : "r:vr:error");
                     finishIfIdle(startId);
                 }
             }, cameraHandler);
         } catch (Exception ex) {
-            Log.e(TAG, "Failed to open front camera for video", ex);
+            Log.e(TAG, "Failed to open camera for video", ex);
             releaseVideoResources(false);
             sendCameraCommandResponse(requestIntent, autoUpload ? "r:uv:error" : "r:vr:error");
             finishIfIdle(startId);
@@ -309,9 +316,9 @@ public class DroidCameraCaptureService extends Service {
             }
             mediaRecorder.stop();
             stopped = currentVideoFile != null && currentVideoFile.exists() && currentVideoFile.length() > 0;
-            Log.i(TAG, "Front video recording stopped: " + (currentVideoFile == null ? "" : currentVideoFile.getAbsolutePath()));
+            Log.i(TAG, "Video recording stopped: " + (currentVideoFile == null ? "" : currentVideoFile.getAbsolutePath()));
         } catch (Exception ex) {
-            Log.e(TAG, "Failed to stop front video recording", ex);
+            Log.e(TAG, "Failed to stop video recording", ex);
         } finally {
             releaseVideoResources(stopped);
         }
@@ -335,15 +342,20 @@ public class DroidCameraCaptureService extends Service {
             }
 
             Size photoSize = choosePhotoSize(cameraManager, cameraId);
+            Size previewSize = choosePhotoPreviewSize(cameraManager, cameraId);
             currentPhotoFile = buildOutputFile(cameraFacing == CameraCharacteristics.LENS_FACING_BACK ? "foto_traseira_" : "foto_frontal_", ".jpg");
-            imageReader = ImageReader.newInstance(photoSize.getWidth(), photoSize.getHeight(), ImageFormat.JPEG, 1);
+            imageReader = ImageReader.newInstance(photoSize.getWidth(), photoSize.getHeight(), ImageFormat.JPEG, 2);
+            photoPreviewTexture = new SurfaceTexture(0);
+            photoPreviewTexture.setDefaultBufferSize(previewSize.getWidth(), previewSize.getHeight());
+            photoPreviewSurface = new Surface(photoPreviewTexture);
             imageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
                 @Override
                 public void onImageAvailable(ImageReader reader) {
                     boolean saved = saveNextImage(reader, currentPhotoFile);
                     if (saved) {
                         saveLatestFile(PREF_LAST_PHOTO_FILE, currentPhotoFile);
-                        Log.i(TAG, "Front photo captured: " + currentPhotoFile.getAbsolutePath());
+                        saveLatestCameraFacing(PREF_LAST_PHOTO_CAMERA_FACING, cameraFacing);
+                        Log.i(TAG, "Photo captured: " + currentPhotoFile.getAbsolutePath());
                     }
                     releasePhotoResources();
                     if (saved) {
@@ -361,26 +373,25 @@ public class DroidCameraCaptureService extends Service {
                 public void onOpened(@NonNull CameraDevice camera) {
                     cameraDevice = camera;
                     try {
-                        cameraDevice.createCaptureSession(Collections.singletonList(imageReader.getSurface()),
+                        cameraDevice.createCaptureSession(Arrays.asList(photoPreviewSurface, imageReader.getSurface()),
                                 new CameraCaptureSession.StateCallback() {
                                     @Override
                                     public void onConfigured(@NonNull CameraCaptureSession session) {
                                         captureSession = session;
                                         try {
-                                            CaptureRequest.Builder builder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
-                                            builder.addTarget(imageReader.getSurface());
-                                            builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
-                                            builder.set(CaptureRequest.JPEG_ORIENTATION, getSensorOrientation(cameraManager, cameraId));
-                                            captureSession.capture(builder.build(), new CameraCaptureSession.CaptureCallback() {
+                                            CaptureRequest.Builder previewBuilder =
+                                                    cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+                                            previewBuilder.addTarget(photoPreviewSurface);
+                                            applyPhotoAutoControls(previewBuilder);
+                                            captureSession.setRepeatingRequest(previewBuilder.build(), null, cameraHandler);
+                                            cameraHandler.postDelayed(new Runnable() {
                                                 @Override
-                                                public void onCaptureCompleted(@NonNull CameraCaptureSession session,
-                                                                               @NonNull CaptureRequest request,
-                                                                               @NonNull TotalCaptureResult result) {
-                                                    Log.i(TAG, "Front photo capture completed");
+                                                public void run() {
+                                                    captureWarmedPhoto(cameraManager, cameraId, requestIntent, startId);
                                                 }
-                                            }, cameraHandler);
+                                            }, PHOTO_WARMUP_MS);
                                         } catch (Exception ex) {
-                                            Log.e(TAG, "Failed to capture front photo", ex);
+                                            Log.e(TAG, "Failed to capture photo", ex);
                                             releasePhotoResources();
                                             sendCameraCommandResponse(requestIntent, "r:up:error");
                                             finishIfIdle(startId);
@@ -389,14 +400,14 @@ public class DroidCameraCaptureService extends Service {
 
                                     @Override
                                     public void onConfigureFailed(@NonNull CameraCaptureSession session) {
-                                        Log.e(TAG, "Failed to configure front photo session");
+                                        Log.e(TAG, "Failed to configure photo session");
                                         releasePhotoResources();
                                         sendCameraCommandResponse(requestIntent, "r:up:error");
                                         finishIfIdle(startId);
                                     }
                                 }, cameraHandler);
                     } catch (Exception ex) {
-                        Log.e(TAG, "Failed to prepare front photo session", ex);
+                        Log.e(TAG, "Failed to prepare photo session", ex);
                         releasePhotoResources();
                         sendCameraCommandResponse(requestIntent, "r:up:error");
                         finishIfIdle(startId);
@@ -405,7 +416,7 @@ public class DroidCameraCaptureService extends Service {
 
                 @Override
                 public void onDisconnected(@NonNull CameraDevice camera) {
-                    Log.w(TAG, "Front camera disconnected during photo");
+                    Log.w(TAG, "Camera disconnected during photo");
                     releasePhotoResources();
                     sendCameraCommandResponse(requestIntent, "r:up:error");
                     finishIfIdle(startId);
@@ -413,18 +424,54 @@ public class DroidCameraCaptureService extends Service {
 
                 @Override
                 public void onError(@NonNull CameraDevice camera, int error) {
-                    Log.e(TAG, "Front camera error during photo: " + error);
+                    Log.e(TAG, "Camera error during photo: " + error);
                     releasePhotoResources();
                     sendCameraCommandResponse(requestIntent, "r:up:error");
                     finishIfIdle(startId);
                 }
             }, cameraHandler);
         } catch (Exception ex) {
-            Log.e(TAG, "Failed to open front camera for photo", ex);
+            Log.e(TAG, "Failed to open camera for photo", ex);
             releasePhotoResources();
             sendCameraCommandResponse(requestIntent, "r:up:error");
             finishIfIdle(startId);
         }
+    }
+
+    private void captureWarmedPhoto(CameraManager cameraManager, String cameraId, Intent requestIntent, int startId) {
+        if (captureSession == null || cameraDevice == null || imageReader == null) {
+            sendCameraCommandResponse(requestIntent, "r:up:error");
+            finishIfIdle(startId);
+            return;
+        }
+        try {
+            CaptureRequest.Builder builder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+            builder.addTarget(imageReader.getSurface());
+            builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
+            builder.set(CaptureRequest.JPEG_ORIENTATION, getSensorOrientation(cameraManager, cameraId));
+            applyPhotoAutoControls(builder);
+            captureSession.stopRepeating();
+            captureSession.capture(builder.build(), new CameraCaptureSession.CaptureCallback() {
+                @Override
+                public void onCaptureCompleted(@NonNull CameraCaptureSession session,
+                                               @NonNull CaptureRequest request,
+                                               @NonNull TotalCaptureResult result) {
+                    Log.i(TAG, "Photo capture completed");
+                }
+            }, cameraHandler);
+        } catch (Exception ex) {
+            Log.e(TAG, "Failed to capture warmed photo", ex);
+            releasePhotoResources();
+            sendCameraCommandResponse(requestIntent, "r:up:error");
+            finishIfIdle(startId);
+        }
+    }
+
+    private void applyPhotoAutoControls(CaptureRequest.Builder builder) {
+        builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
+        builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+        builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+        builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
     }
 
     private MediaRecorder createVideoRecorder(File outputFile, Size videoSize, int orientation) throws Exception {
@@ -449,7 +496,7 @@ public class DroidCameraCaptureService extends Service {
         Image image = null;
         FileOutputStream outputStream = null;
         try {
-            image = reader.acquireNextImage();
+            image = reader.acquireLatestImage();
             if (image == null) {
                 return false;
             }
@@ -460,7 +507,7 @@ public class DroidCameraCaptureService extends Service {
             outputStream.write(bytes);
             return outputFile.exists() && outputFile.length() > 0;
         } catch (Exception ex) {
-            Log.e(TAG, "Failed to save front photo", ex);
+            Log.e(TAG, "Failed to save photo", ex);
             return false;
         } finally {
             if (image != null) {
@@ -490,8 +537,8 @@ public class DroidCameraCaptureService extends Service {
 
             Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_stat_remote_access)
-                    .setContentTitle(getString(R.string.remote_camera_capture_title))
-                    .setContentText(getString(R.string.remote_camera_capture_text))
+                    .setContentTitle(getString(getCameraCaptureTitleRes(command)))
+                    .setContentText(getString(getCameraCaptureTextRes(command)))
                     .setOngoing(true)
                     .setOnlyAlertOnce(true)
                     .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -511,6 +558,22 @@ public class DroidCameraCaptureService extends Service {
             Log.e(TAG, "Failed to start foreground camera service", ex);
             return false;
         }
+    }
+
+    private int getCameraCaptureTitleRes(String command) {
+        int facing = getCameraFacing(command);
+        if (facing == CameraCharacteristics.LENS_FACING_BACK) {
+            return R.string.remote_camera_capture_title_back;
+        }
+        return R.string.remote_camera_capture_title_front;
+    }
+
+    private int getCameraCaptureTextRes(String command) {
+        int facing = getCameraFacing(command);
+        if (facing == CameraCharacteristics.LENS_FACING_BACK) {
+            return R.string.remote_camera_capture_text_back;
+        }
+        return R.string.remote_camera_capture_text_front;
     }
 
     private void stopCameraForeground() {
@@ -619,6 +682,16 @@ public class DroidCameraCaptureService extends Service {
         return chooseReasonableSize(Arrays.asList(sizes), 1920, 1080);
     }
 
+    private Size choosePhotoPreviewSize(CameraManager cameraManager, String cameraId) throws Exception {
+        CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(cameraId);
+        StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+        Size[] sizes = map == null ? null : map.getOutputSizes(SurfaceTexture.class);
+        if (sizes == null || sizes.length == 0) {
+            return new Size(640, 480);
+        }
+        return chooseReasonableSize(Arrays.asList(sizes), VIDEO_MAX_WIDTH, VIDEO_MAX_HEIGHT);
+    }
+
     private Size chooseReasonableSize(List<Size> sizes, int maxWidth, int maxHeight) {
         List<Size> candidates = new ArrayList<>();
         for (Size size : sizes) {
@@ -660,6 +733,19 @@ public class DroidCameraCaptureService extends Service {
                 .edit()
                 .putString(preferenceKey, file.getAbsolutePath())
                 .apply();
+    }
+
+    private void saveLatestCameraFacing(String preferenceKey, int cameraFacing) {
+        PreferenceManager.getDefaultSharedPreferences(getApplicationContext())
+                .edit()
+                .putString(preferenceKey, cameraFacingToValue(cameraFacing))
+                .apply();
+    }
+
+    private static String cameraFacingToValue(int cameraFacing) {
+        return cameraFacing == CameraCharacteristics.LENS_FACING_BACK
+                ? Constantes.CAMERA_FACING_BACK
+                : Constantes.CAMERA_FACING_FRONT;
     }
 
     @Nullable
@@ -710,6 +796,40 @@ public class DroidCameraCaptureService extends Service {
         return getLatestFile(context, PREF_LAST_PHOTO_FILE, ".jpg");
     }
 
+    public static String getLatestVideoCameraFacing(Context context) {
+        return getLatestCameraFacing(context, getLatestVideoFile(context), PREF_LAST_VIDEO_CAMERA_FACING);
+    }
+
+    public static String getLatestPhotoCameraFacing(Context context) {
+        return getLatestCameraFacing(context, getLatestPhotoFile(context), PREF_LAST_PHOTO_CAMERA_FACING);
+    }
+
+    private static String getLatestCameraFacing(Context context, File file, String preferenceKey) {
+        String fromFileName = getCameraFacingFromFileName(file);
+        if (!fromFileName.isEmpty()) {
+            return fromFileName;
+        }
+        if (context == null) {
+            return "";
+        }
+        return PreferenceManager.getDefaultSharedPreferences(context.getApplicationContext())
+                .getString(preferenceKey, "");
+    }
+
+    private static String getCameraFacingFromFileName(File file) {
+        if (file == null || file.getName() == null) {
+            return "";
+        }
+        String name = file.getName().toLowerCase(java.util.Locale.US);
+        if (name.contains("traseir") || name.contains("back")) {
+            return Constantes.CAMERA_FACING_BACK;
+        }
+        if (name.contains("frontal") || name.contains("front")) {
+            return Constantes.CAMERA_FACING_FRONT;
+        }
+        return "";
+    }
+
     private void releaseVideoResources(boolean keepFile) {
         recording = false;
         try {
@@ -748,6 +868,16 @@ public class DroidCameraCaptureService extends Service {
         if (imageReader != null) {
             imageReader.close();
             imageReader = null;
+        }
+
+        if (photoPreviewSurface != null) {
+            photoPreviewSurface.release();
+            photoPreviewSurface = null;
+        }
+
+        if (photoPreviewTexture != null) {
+            photoPreviewTexture.release();
+            photoPreviewTexture = null;
         }
 
         closeCamera();
