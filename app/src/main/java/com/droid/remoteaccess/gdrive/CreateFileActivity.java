@@ -53,7 +53,7 @@ public class CreateFileActivity extends Activity {
     }
 
     private void writeMessages(File outputDir) throws Exception {
-        File outputFile = new File(outputDir, "mensagens_" + Methods.getDateTimeFormated() + ".txt");
+        File outputFile = new File(outputDir, "historico_notificacoes_" + Methods.getDateTimeFormated() + ".txt");
         Writer writer = new OutputStreamWriter(new FileOutputStream(outputFile), "UTF-8");
         writer.write(getIntent().getStringExtra(Constantes.MESSAGE));
         writer.close();

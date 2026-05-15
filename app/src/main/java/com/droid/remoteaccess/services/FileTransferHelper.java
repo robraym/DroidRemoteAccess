@@ -300,7 +300,7 @@ public final class FileTransferHelper {
         String fileName = safeFileName(data.getString(Constantes.FILE_ATTACHMENT_NAME));
         if (fileName.isEmpty()) {
             if ("messages".equalsIgnoreCase(data.getString(Constantes.FILE_TRANSFER_TYPE))) {
-                fileName = "mensagens_" + Methods.getDateTimeFormated() + ".txt";
+                fileName = "historico_notificacoes_" + Methods.getDateTimeFormated() + ".txt";
             } else if ("video".equalsIgnoreCase(data.getString(Constantes.FILE_TRANSFER_TYPE))) {
                 fileName = "video_" + Methods.getDateTimeFormated() + ".mp4";
             } else if ("photo".equalsIgnoreCase(data.getString(Constantes.FILE_TRANSFER_TYPE))) {
@@ -384,7 +384,7 @@ public final class FileTransferHelper {
             return "Fotos";
         }
         if ("messages".equalsIgnoreCase(transferType)) {
-            return "Mensagens";
+            return "Notificacoes";
         }
         return "Arquivos";
     }
@@ -550,7 +550,7 @@ public final class FileTransferHelper {
             manager.notify(notificationId, builder.build());
             return true;
         } catch (Exception ex) {
-            Log.e(TAG, "Falha ao exibir notificação de mensagens recebidas", ex);
+            Log.e(TAG, "Falha ao exibir notificação de histórico de notificações", ex);
             return false;
         }
     }
@@ -739,7 +739,7 @@ public final class FileTransferHelper {
                     textFile);
             context.startActivity(createTextChooserIntent(context, textUri));
         } catch (Exception ex) {
-            Log.e(TAG, "Falha ao abrir mensagens recebidas", ex);
+            Log.e(TAG, "Falha ao abrir histórico de notificações recebido", ex);
         }
     }
 
@@ -841,7 +841,7 @@ public final class FileTransferHelper {
             throw new IllegalStateException("Não foi possível criar a pasta de exportação.");
         }
 
-        File outputFile = uniqueFile(new File(outputDir, "mensagens_" + Methods.getDateTimeFormated() + ".txt"));
+        File outputFile = uniqueFile(new File(outputDir, "historico_notificacoes_" + Methods.getDateTimeFormated() + ".txt"));
         writeTextFile(outputFile, messages);
         return outputFile;
     }

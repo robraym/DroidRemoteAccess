@@ -33,6 +33,7 @@ public class Persintencia extends SQLiteOpenHelper {
     public static final String TOKEN = "token";
     public static final String DEVICE = "device";
     public static final String MENSAGEM = "mensagem";
+    private static final int MAX_NOTIFICACOES_POR_APARELHO = 500;
 
     public Persintencia(Context context) {
         super(context, BANCO, null, VERSAO);
@@ -122,6 +123,27 @@ public class Persintencia extends SQLiteOpenHelper {
             cv.put(MENSAGEM, mensagem);
             //
             getWritableDatabase().insert(MENSAGENS, null, cv);
+            LimitarHistoricoNotificacoes(id);
+        }
+    }
+
+    private void LimitarHistoricoNotificacoes(String id) {
+        if (id == null || id.isEmpty()) {
+            return;
+        }
+        try {
+            getWritableDatabase().execSQL(
+                    "DELETE FROM " + MENSAGENS
+                            + " WHERE " + ID + " = ?"
+                            + " AND rowid NOT IN ("
+                            + "SELECT rowid FROM " + MENSAGENS
+                            + " WHERE " + ID + " = ?"
+                            + " ORDER BY rowid DESC"
+                            + " LIMIT " + MAX_NOTIFICACOES_POR_APARELHO
+                            + ")",
+                    new Object[]{id, id});
+        } catch (Exception e) {
+            Log.d("DBase", e.getMessage());
         }
     }
 
